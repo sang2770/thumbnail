@@ -1,0 +1,63 @@
+# 6 kenh mau nguoi dung dua (2026-08-12), video >=3 phut, sap theo view.
+# Lay lai du lieu: .venv/bin/python -m yt_dlp --flat-playlist --playlist-end 150 --print '%(view_count)s	%(duration)s	%(id)s	%(title)s' <url>
+# @DaiTauReview | @HuyenMyReviewPhim | @BienSoanPhimAI | @DucManhReview | @AnhThuReviewPhim | @ShynnnAnhReview
+843000	ShynnAnh	QTethETgbCk	Trọng Sinh Về Trước Ngày Tan Cửa Nát Nhà,Chàng Trai Dùng Kí Ức Lên Núi Săn Toàn Thú Khủng Lấy Vợ Đẹp
+689000	ShynnAnh	8V7UMX_3nzM	Trọng Sinh Về Thời Nguyên Thủy, Dùng Kiến Thức Hiện Đại Săn Mãnh Thú Tiền Sử Chinh Phục Thần Bộ Tộc
+679000	AnhThu	jMUwCKXR_iw	Xuyên Thành Nữ Phụ Phản Diện,Cô Gái Sốc Nặng Khi Bảy Anh Trai Tổng Tài Đều Nghe Được Tiếng Lòng Mình
+642000	AnhThu	W6X3xSBluRQ	Thiên Kim Phá Sản Bị Đẩy Đến Đường Cùng, Gả Cho Tổng Tài Thực Vật Không Ngờ Anh Tỉnh Giúp Cô Báo Thù
+620000	DucManh	CbJXWdr_X7E	Xuyên Không Vào Cô Gái Ngốc Bị Coi Thường,Dùng Kiến Thức Săn Bắn Thay Đổi Vận Mệnh Nghèo Khó GiaĐình
+604000	DucManh	1yivMJ7sX1Y	Cô Gái Thôn Quê Bị Coi Thường Không Có Linh Căn, Bất Ngờ Bộc Phát Sức Mạnh Làm Chấn Động Cả Tông Môn
+474000	DucManh	bjhXu0myveQ	Xuyên Không Thành Trưởng Tỷ Mồ Côi, Cô Gái Dùng Cả Thanh Xuân Để Nuôi Dạy Các Em Thành Tài
+471000	BienSoanAI	ftmHR7Vmjsc	Cô Gái Bị Ép Gả Vào Núi Sâu Bất Ngờ Lật Kèo, Lấy Chồng Nghèo Rồi Đổi Đời Ngoạn Mục Rực Rỡ
+430000	DucManh	bPQWH-qiJio	Xuyên Không Về Nông Thôn Nghèo Đói, Dùng Trí Tuệ Hiện Đại Dẫn Cả Gia Đình Từ Nghèo Khó Thành Phú Hộ
+428000	BienSoanAI	XJqd2x6jmrU	Xuyên Không Làm Nông, Nàng Dùng Không Gian Thu Phục Lợn Rừng Cứu Cả Làng Thoát Khỏi Đói Kém
+425000	BienSoanAI	3hch4gl_E0w	Từ bác sĩ hiện đại thành Vương phi thất sủng, nàng xoay chuyển số phận và đòi hòa ly trả thù cực gắt
+403000	ShynnAnh	qgjijWBUGrU	Trọng Sinh Thấy Vợ Con Nguy Kịch,Chàng Trai Được Sơn Thần Ban Cung Thần Lên Núi Săn Quái Thú Đổi Đời
+344000	DucManh	sZV7uWDZ8JA	Mang Con Gái Trốn Chạy 5 Năm, Tiểu Nha Đầu Hiệu Lệnh Muông Thú Trở Về Khiến Cả Gia Tộc Phải Cầu Xin!
+344000	DucManh	3H_fIz1myKg	Hành Trình Chiến Đấu Của Cô Gái, Với Đàn Sói Rừng Để Giải Cứu Các Con Khiến Cả Thiên Hạ Kinh Ngạc
+334000	AnhThu	VCFYxoE2Pho	Ngày Đón Dâu Đòi Thêm Sính Lễ,Tổng Tài Quay Xe Cưới Bạn Thân Yêu Thầm Khiến Cô Dâu Hối Hận Không Kịp
+332000	HuyenMy	-oSlfDE_PqY	Vừa Xuyên Không Đã Bị Ruồng Bỏ, Bỗng Dùng Kiến Thức Hiện Đại Làm Giàu Lật Ngược Số Phận Bên Gia Đình
+330000	DucManh	kb6bnBaQljk	Vừa Xuyên Không Đã Bị Gã Cho Gia Đình Nghèo, Dùng Ký Ức Kiếp Trước Lên Núi Săn Hái Thay Đổi Vận Mệnh
+328000	AnhThu	oCi7PuWOdoE	Thiên Kim Bị Gia Đình Ruồng Bỏ Gả Cho Kẻ Tàn Phế,Ai Ngờ Là Tổng Tài Nghìn Tỷ Nguyện Bảo Vệ Cô Cả Đời
+325000	ShynnAnh	m-OdeWmdmSM	Trọng Sinh Về Thời Nguyên Thủy, Dùng Kiến Thức Tối Tân Săn Quái Thú Tiền Sử Thống Lĩnh Thần Bộ Tộc
+320000	ShynnAnh	Dorrs-iXmSc	Mẹ Con Bị Đuổi Đi Cướp Hết Gia Sản, Chàng Trai Mở Ra Không Gian Linh Tuyền Săn Bắn Hái Quả Đổi Đời
+316000	BienSoanAI	H88mytXp11Q	Cô Gái Nghe Hiểu Tiếng Chim Lật Tẩy Hôn Phu Phản Bội Rồi Phò Tá Vương Gia Lên Ngôi Tạo Nên Thịnh Thế
+310000	BienSoanAI	qWE4a1BXfuU	Đêm Tân Hôn Bị Em Gái Tráo Đổi Phu Quân, Mỹ Nhân Trọng Sinh Khiến Hầu Phủ Chìm Trong Dục Vọng
+308000	BienSoanAI	XevWeBlqBtg	Trùng Sinh Ngày Mẹ Bị Hãm Hại, Đích Nữ Bày Mưu Báo Thù Khiến Hầu Gia Mất Tất Cả Chấn Động Kinh Thành
+306000	ShynnAnh	LSQDbt6uAts	Trọng Sinh Về Thấy Vợ Con Đói Khát Cùng Đường, Chàng Trai lên Núi Hái Thần Dược Đổi Đời Cứu Cả Nhà
+303000	DaiTau	dsRVBp126pM	Vừa Xuyên Không Đã Bị Gả Cho Bốn Mỹ Nhân Chàng Trai Dùng Kho Vũ Khí Hiện Đại Quét Sạch Quân Nỗi Loạn
+301000	AnhThu	TTYnNG6G4Js	Chàng Trai Nghèo Rơi Xuống Vách Núi Bất Ngờ Thức Tỉnh Dị Năng, Trở Tỷ Phú Nhờ Giám Định Nhân Sâm Cổ
+300000	DucManh	bGCx3SaeQ1o	Xuyên Không Về Nhà Nghèo, Cô Gái Đi Hái Thuốc Đánh Bắt Cá, Từng Bước Đưa Gia Đình Thoát Cảnh Đói Khổ
+298000	ShynnAnh	lC9CUgv7PPI	Con Trai Và Con Dâu Bất Hiếu Đuổi Bố Ra Đường, Nào Ngờ Ông Lão Trúng Mẻ Cá Vàng Đổi Đời Thành Tỷ Phú
+295000	ShynnAnh	YfDmOPmru88	Xuyên Không Về Thập Niên 80, Vua Thợ Săn Lên Núi Cấm Săn Thú Làm Giàu Thay Đổi Số Phận Bên Gia Đình
+287000	ShynnAnh	YXCGgu1I7hU	Cô Gái Nghèo Bị Ép Gả Cho Gã Ngốc, Nào Ngờ Cô Hiểu Tiếng Động Vật Lên Núi Săn Thú Hái Sâm Đổi Đời
+286000	BienSoanAI	NMZnpSe5oPU	Nữ Thần Y Xuyên Không Bị Chôn Sống, Tỉnh Dậy Cứu Nhiếp Chính Vương Và Vả Mặt Cả Phủ Tướng
+279000	BienSoanAI	iWkVUN6tILg	Cô Gái Lực Điền Bị Coi Thường, Dám Bảo Vệ Thiếu Gia Mặt Sẹo Rồi Được Phong Hầu Chấn Động
+275000	BienSoanAI	xR6-enDpl0s	Viện Trưởng Xuyên Không Thành Tiểu Thư Bị Từ Hôn, Dùng Y Thuật Hiện Đại Cứu Vương Gia Và Lật Án Lớn!
+275000	DucManh	n85uAxEOEbc	Xuyên Không Đến Vùng Đất Nghèo Đói, Cô Dùng Trí Tuệ Xây Dựng Cơ Nghiệp Khiến Cả Kinh Thành Chấn Động
+275000	ShynnAnh	Bs7H2B0dCFY	Trọng Sinh Thấy Vợ Con Bị Mẹ Hành Hạ, Chàng Trai Nghèo Ra Biển Cấm Săn Bắt Thần Hải Sản Cứu Cả Nhà
+269000	AnhThu	Z00uLVEx43c	Gia Đình Sắp Bị Bỏ Đói Đến Chết, Chàng Trai Lên Núi Tuyết Săn Bắn Thú Rừng Đổi Đời Cứu Sống Cả Nhà
+269000	ShynnAnh	5r61F9rab4E	Trọng Sinh Về Ngày Bị Mưu Hại Cả Nhà,Chàng Trai Mang Hồ Lô Thần Bí Săn Quái Thú Tìm Sâm Thần Đổi Đời
+263000	ShynnAnh	B3dkD5aOHUU	Chàng Trai Nghèo Bị Coi Thường, Thực Ra Là Vua Thợ Săn Núi Cấm Lên Núi Săn Bắt Quái Vật Thành Tỷ Phú
+259000	DaiTau	vfSsw1KF_4U	Thiếu Niên Phế Linh Căn Nhặt Được Tụ Bảo Bồn,Từ Tạp Dịch Trở Thành Thiên Tài Trấn Áp Cả giới Tu Tiên
+256000	DaiTau	4xIdZww53R0	Vừa Xuyên Không Thành Kẻ Phế Vật, Bất Ngờ KÍch Hoạt Hệ Thống Sủng Thê Húp Trọn Dàn Mỹ Nhân Thiên Hạ
+253000	DucManh	fmT_YxJTKtc	Vừa Xuyên Không Đã Bị Lưu Đày, Kích Hoạt Không Gian Kì Bí Cứu Sống Gia Đình Chồng Lật Ngược Vận Mệnh
+251000	ShynnAnh	qk_X-AdRszA	Chàng Trai Xuyên Không Về Ngày Bị Phản Bội,  Kí Khế Ước Thần Rừng Săn Hái Thảo Dược Trở Thành Tỷ Phú
+251000	BienSoanAI	THlE3dYxbzQ	Trọng Sinh Đêm Tân Hôn, Nàng Mang Dị Năng Cứu Chiến Thần Và Dọn Sạch Quốc Khố Đại Chu Báo Thù Tân Đế
+251000	AnhThu	4cRb9obU8ac	Bị Chồng Cũ Đuổi Ra Khỏi Nhà Không Một Xu Dính Túi, Nào Ngờ Hôm Sau Cô Gái Quay Lại Mua Cả Công Ty
+248000	ShynnAnh	yy3J22ao9rE	Vừa Xuyên Không Đã Bị Đuổi Khỏi Nhà, Chàng Trai Thức Tỉnh Thần Thú Lên Núi Săn Bắn Hái Lượm Đổi Đời
+244000	ShynnAnh	jIyETvnYy68	Phá Sản Phải Đi Ăn Xin,Nào Ngờ Thức Tỉnh Sức Mạnh Sơn Thần Lên Núi Hái Sâm Thần Đổi Đời Thành Tỷ Phú
+244000	HuyenMy	IahPK648sjE	Xuyên Không Vào Ngôi Làng Nghèo,Dùng Kí Ức Săn Bắn Kiếp Trước Thay Đổi Vận Mệnh Đói Kém Của Gia Đình
+228000	ShynnAnh	x5AFZYFSfhk	Trọng Sinh Về Thấy Vợ Con Đói Rét Cùng Đường, Chàng Trai Dùng Thần Tiễn Lên Núi Săn Siêu Thú Đổi Đời
+225000	ShynnAnh	FfYP8AlAdkM	Trọng Sinh Thấy Vợ Con Bị Mẹ Hành Hạ, Vua Thợ Săn Lên Núi Diệt Tứ Đại Hung Thú Đổi Đời Bảo Vệ Cả Nhà
+224000	AnhThu	aG-JoeECRKo	Tiểu Tam Tưởng Đã Thắng, Nào Ngờ Chỉ Một Xấp Chứng Cứ Khiến Cô Ta Khóc Gục Ngã Trước Mặt Mọi Người
+215000	DucManh	z47na_XvY7w	Xuyên Không Về Ngôi Làng Nghèo,Dùng Cánh Cửa Hiện Đại Mang Thực Phẩm Giúp Cả Làng Thoát Khỏi Khổ Cực
+211000	DucManh	D4SL4B_n0VM	Xuyên Không Về Thời Cổ Đại, Cô Gái Vô Tình Kích Hoạt Không Gian Kỳ Bí Vô Hạn Làm Cả Đại Hạ Chấn Động
+210000	HuyenMy	LR1q6Rq01C8	Xuyên Không Thành Huyện Lệnh Bị Đày, Kích Hoạt Hệ Thống Vật Tư Vô Hạn Cứu Dân,Quyết Xưng Bá Thiên Hạ
+209000	ShynnAnh	zlxjzXb46MA	Trọng Sinh Về Thập Niên 80, Cô Gái Nghèo Mang Theo Không Gian Thần Bí Đổi Đời Thành Tỷ Phú Thế Giới
+208000	ShynnAnh	FnLH6vawN0s	Chàng Trai Nghèo Rơi Xuống Vách Núi, Được Thần Rừng Truyền Thừa Lên Núi Đào Sâm Quý Săn Thú Đổi Đời
+206000	AnhThu	gkEmZPpoRsA	Thiên Kim Giả Bị Đuổi Khỏi Hào Môn,Ai Ngờ Nhà Ruột Nghèo Khó Lại Có 8 Anh Trai Đại Lão Chiều Hết Mực
+205000	BienSoanAI	wBm8xvxuC0Y	Xuyên Không Thành Thần Y Thú, Cứu Gấu Trúc Thoát Ác Quan Và Xin Thánh Chỉ Bảo Vệ Muôn Loài
+205000	ShynnAnh	6v6_PiZWASI	Trọng Sinh Về Thấy Cả Nhà Lâm Vào Tuyệt Cảnh, Chàng Trai Nghèo Lên Núi Săn Mãnh Thú Cứu Cả Gia Đình
+204000	DucManh	EPzWJr2utuA	Xuyên Không Vào Thời Nghèo Đói, Mang Theo Kiến Thức Hiện Đại, Cô Dẫn Cả Nhà Làm Giàu Giữa Thiên Tai
+203000	BienSoanAI	Stx4iQIKEmo	Trùng Sinh Thành Vương Phi Tuyệt Sắc, Nàng Khiến Tra Nam Phải Quỳ Gối Xin Tha Suốt Đêm

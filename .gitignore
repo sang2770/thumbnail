@@ -1,0 +1,78 @@
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# ==========================================
+# PyInstaller & Build Artifacts
+# ==========================================
+build/
+dist/
+*.manifest
+*.pyinstaller
+# Luu y: Giu lai file ThumbnailPipeline.spec vi day la file cau hinh build
+
+# ==========================================
+# Caches & Temporary Files
+# ==========================================
+.cache/
+refs/
+.dangtai/
+*.part
+*.tmp
+
+# ==========================================
+# Runtime Inputs, Outputs & Heavy Media
+# ==========================================
+# Giu thu muc tren Git bang .gitkeep nhung bo qua cac file video/anh nang
+input/*
+!input/.gitkeep
+
+output/*
+!output/.gitkeep
+
+net/*
+!net/.gitkeep
+net/xong/
+
+# ==========================================
+# Binaries & Executables
+# ==========================================
+ffmpeg.exe
+ffprobe.exe
+*.exe
+*.dll
+*.dylib
+
+# ==========================================
+# Large Downloaded AI Models (>100MB)
+# ==========================================
+# InsightFace models (tranh vuot qua gioi han 100MB cua GitHub)
+models/buffalo_l/
+*.zip
+*.tar.gz
+
+# ==========================================
+# OS & IDE Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
