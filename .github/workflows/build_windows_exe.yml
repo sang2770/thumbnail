@@ -20,11 +20,13 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
-          # Cai DirectML cho GPU Windows (tuong thich 100% RTX 50x / 40x / 30x / AMD / Intel)
+          # Go onnxruntime CPU mac dinh de uu tien onnxruntime-directml (tuong thich 100% GPU RTX 50x / 40x / 30x / AMD / Intel tren Windows)
+          pip uninstall -y onnxruntime
           pip install onnxruntime-directml pyinstaller
 
       - name: Setup FFmpeg & FFprobe
@@ -39,27 +41,144 @@ jobs:
           $ffprobePath = (Get-Command ffprobe).Source
           Copy-Item $ffmpegPath -Destination .\ffmpeg.exe
           Copy-Item $ffprobePath -Destination .\ffprobe.exe
-          Write-Host "Da copy ffmpeg.exe va ffprobe.exe vao project root."
+          Write-Host "[+] Da copy ffmpeg.exe va ffprobe.exe vao project root."
 
-      - name: Build EXE with PyInstaller
-        run: |
-          pyinstaller ThumbnailPipeline.spec
-
-      - name: Package Distributable Folder
+      - name: Auto Download AI Model Dependencies (buffalo_l & Real-ESRGAN)
         shell: pwsh
         run: |
-          # Tao thu muc input, output, net san cho nguoi dung cuoi
-          New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\input
-          New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\output
-          New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\net
-          if (Test-Path "dist\ThumbnailPipeline\main.exe") {
-              Copy-Item "dist\ThumbnailPipeline\main.exe" -Destination "dist\ThumbnailPipeline\ThumbnailPipeline.exe"
+          Write-Host "========================================================="
+          Write-Host "[*] Kiem tra va tu dong tai cac bo AI Model dependencies..."
+          Write-Host "========================================================="
+
+          # 1. Tu dong tai bo model InsightFace buffalo_l (Face Analysis)
+          $buffaloDir = "models\buffalo_l"
+          $requiredBuffaloFiles = @("1k3d68.onnx", "2d106det.onnx", "genderage.onnx", "glintr100.onnx", "scrfd_10g_bnkps.onnx")
+          $needsBuffaloDownload = $false
+
+          if (-not (Test-Path $buffaloDir)) {
+              $needsBuffaloDownload = $true
+          } else {
+              foreach ($f in $requiredBuffaloFiles) {
+                  if (-not (Test-Path (Join-Path $buffaloDir $f))) {
+                      $needsBuffaloDownload = $true
+                      break
+                  }
+              }
           }
-          Compress-Archive -Path dist\ThumbnailPipeline\* -DestinationPath dist\ThumbnailPipeline-Windows.zip
+
+          if ($needsBuffaloDownload) {
+              Write-Host "[*] Dang tu dong tai bo model InsightFace buffalo_l (288MB)..."
+              New-Item -ItemType Directory -Force -Path $buffaloDir | Out-Null
+              $buffaloUrl = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
+              $zipPath = "models\buffalo_l.zip"
+              
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+              $webClient = New-Object System.Net.WebClient
+              $webClient.DownloadFile($buffaloUrl, $zipPath)
+              
+              Write-Host "[*] Dang giai nen bo model buffalo_l..."
+              Expand-Archive -Path $zipPath -DestinationPath $buffaloDir -Force
+              Remove-Item -Force $zipPath
+              Write-Host "[+] Da tai va tich hop thanh cong bo model buffalo_l!"
+          } else {
+              Write-Host "[+] Bo model buffalo_l da co day du."
+          }
+
+          # 2. Kiem tra model Real-ESRGAN x4
+          if (-not (Test-Path "models\realesrgan_x4.onnx")) {
+              Write-Host "[*] Model realesrgan_x4.onnx chua co, dang tu dong tai..."
+              New-Item -ItemType Directory -Force -Path "models" | Out-Null
+              $esrganUrl = "https://github.com/sang2770/thumbnail/raw/main/models/realesrgan_x4.onnx"
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+              $webClient = New-Object System.Net.WebClient
+              $webClient.DownloadFile($esrganUrl, "models\realesrgan_x4.onnx")
+              Write-Host "[+] Da tai thanh cong realesrgan_x4.onnx!"
+          } else {
+              Write-Host "[+] Model realesrgan_x4.onnx da san sang."
+          }
+
+      - name: Build Standalone main.exe with PyInstaller
+        shell: pwsh
+        run: |
+          Write-Host "[*] Dang bat dau dong goi bang PyInstaller..."
+          pyinstaller --clean ThumbnailPipeline.spec
+          Write-Host "[+] PyInstaller dong goi hoan tat!"
+
+      - name: Package Distributable Folder (All-in-One Offline Bundle)
+        shell: pwsh
+        run: |
+          Write-Host "[*] Dang sap xep thu muc phan phoi dist\ThumbnailPipeline..."
+          
+          # 1. Tao san cac thu muc lam viec
+          New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\input" | Out-Null
+          New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\output" | Out-Null
+          New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\net" | Out-Null
+          New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\models" | Out-Null
+
+          # 2. Copy toan bo models (bao gom ca buffalo_l va realesrgan_x4.onnx) truc tiep vao dist
+          Copy-Item -Path "models\*" -Destination "dist\ThumbnailPipeline\models" -Recurse -Force
+          Write-Host "[+] Da dong goi toan bo thu muc models vao dist."
+
+          # 3. Copy ffmpeg va ffprobe
+          if (Test-Path "ffmpeg.exe") { Copy-Item "ffmpeg.exe" -Destination "dist\ThumbnailPipeline\" -Force }
+          if (Test-Path "ffprobe.exe") { Copy-Item "ffprobe.exe" -Destination "dist\ThumbnailPipeline\" -Force }
+
+          # 4. Copy template prompt va du lieu kenh
+          Copy-Item "prompt_template.md" -Destination "dist\ThumbnailPipeline\" -Force
+          Copy-Item "kenh_mau.tsv" -Destination "dist\ThumbnailPipeline\" -Force
+
+          # 5. Tao ban copy ThumbnailPipeline.exe (de chay duoc bang ca 2 ten main.exe hoac ThumbnailPipeline.exe)
+          if (Test-Path "dist\ThumbnailPipeline\main.exe") {
+              Copy-Item "dist\ThumbnailPipeline\main.exe" -Destination "dist\ThumbnailPipeline\ThumbnailPipeline.exe" -Force
+          }
+
+          # 6. Tao file chay nhanh CHAY_TOOL.bat
+          $batContent = "@echo off`r`ncd /d `"%~dp0`"`r`nstart `"`" main.exe"
+          [System.IO.File]::WriteAllText("dist\ThumbnailPipeline\CHAY_TOOL.bat", $batContent, [System.Text.Encoding]::UTF8)
+
+          # 7. Tao file HUONG_DAN_NHANH.txt
+          $guideContent = @"
+=====================================================================
+          BO CONG CU THUMBNAIL PIPELINE CHO WINDOWS
+=====================================================================
+
+1. CHAY TOOL:
+   - Click dup vao file "main.exe" (hoac "CHAY_TOOL.bat") de mo menu tieng Viet.
+   - Hoac mo CMD/PowerShell tai thu muc nay va go:
+       main.exe gpu                                  # Kiem tra tang toc GPU
+       main.exe tai <link_google_drive>              # Tai video & srt
+       main.exe make <ten_video> --cast 3            # Cat mat & tao prompt
+       main.exe net --rong 1280 --jpg                # Lam net anh
+       main.exe title "output/anh.png" "Tieu de"     # Ghep chu tieu de
+
+2. CAC THU MUC LAM VIEC CO SAN:
+   - input/  : Bo video (.mp4/.mkv), phu de (.srt), file .moments.txt vao day.
+   - output/ : Chua anh goc, anh mat nhan vat va file prompt.txt thanh pham.
+   - net/    : Dat cac anh can lam net vao day.
+
+3. TINH NANG SAN SANG 100% (OFFLINE - KHONG CAN INTERNET):
+   - Toan bo bo model AI (InsightFace buffalo_l + Real-ESRGAN x4) da tich hop san.
+   - FFmpeg & FFprobe da kem san, khong can cai them bat cu phan mem nao.
+=====================================================================
+"@
+          [System.IO.File]::WriteAllText("dist\ThumbnailPipeline\HUONG_DAN_NHANH.txt", $guideContent, [System.Text.Encoding]::UTF8)
+
+          # 8. Dong goi file zip
+          Write-Host "[*] Dang nen thu muc thanh file ThumbnailPipeline-Windows.zip..."
+          Compress-Archive -Path dist\ThumbnailPipeline\* -DestinationPath dist\ThumbnailPipeline-Windows.zip -Force
+          Write-Host "[+] Dong goi ZIP thanh cong!"
 
       - name: Upload Windows Executable Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ThumbnailPipeline-Windows
           path: dist/ThumbnailPipeline-Windows.zip
-          retention-days: 14
+          retention-days: 30
+
+      - name: Release Executable on Tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ThumbnailPipeline-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

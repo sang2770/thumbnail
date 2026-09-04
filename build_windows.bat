@@ -81,14 +81,30 @@ if not exist "ffprobe.exe" (
 )
 :COPY_FFPROBE_XONG
 
-:: 5. Kiem tra file model ONNX
+:: 5. Kiem tra file model ONNX & InsightFace
 echo.
-echo [*] Buoc 6: Kiem tra file model...
+echo [*] Buoc 6: Kiem tra cac bo AI Model dependencies...
 if not exist "models\realesrgan_x4.onnx" (
     echo [!] CANH BAO: Khong tim thay models\realesrgan_x4.onnx!
     echo     Chuc nang lam net se can file model nay.
 ) else (
     echo     -> Da co models\realesrgan_x4.onnx.
+)
+
+if not exist "models\buffalo_l\scrfd_10g_bnkps.onnx" (
+    echo [*] Dang tu dong tai bo model InsightFace buffalo_l (288MB)...
+    if not exist "models\buffalo_l" mkdir "models\buffalo_l"
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip', 'models\buffalo_l.zip')"
+    if exist "models\buffalo_l.zip" (
+        echo [*] Dang giai nen bo model buffalo_l...
+        powershell -Command "Expand-Archive -Path 'models\buffalo_l.zip' -DestinationPath 'models\buffalo_l' -Force"
+        del /f /q "models\buffalo_l.zip"
+        echo     -> Da tich hop bo model buffalo_l thanh cong!
+    ) else (
+        echo [!] Khong the tai buffalo_l.zip tu dong. Ban co the tai tay sau.
+    )
+) else (
+    echo     -> Da co day du bo model InsightFace buffalo_l.
 )
 
 :: 6. Chay PyInstaller
@@ -113,8 +129,19 @@ if not exist "dist\ThumbnailPipeline\net" mkdir "dist\ThumbnailPipeline\net"
 if exist "ffmpeg.exe" copy /y "ffmpeg.exe" "dist\ThumbnailPipeline\" >nul
 if exist "ffprobe.exe" copy /y "ffprobe.exe" "dist\ThumbnailPipeline\" >nul
 
+:: Copy models va du lieu can thiet vao thu muc dist de chay offline doc lap
+if not exist "dist\ThumbnailPipeline\models" mkdir "dist\ThumbnailPipeline\models"
+xcopy /e /i /y "models" "dist\ThumbnailPipeline\models" >nul
+if exist "prompt_template.md" copy /y "prompt_template.md" "dist\ThumbnailPipeline\" >nul
+if exist "kenh_mau.tsv" copy /y "kenh_mau.tsv" "dist\ThumbnailPipeline\" >nul
+
 :: Tao file copy ThumbnailPipeline.exe neu muon tuong thich ca 2 ten
 if exist "dist\ThumbnailPipeline\main.exe" copy /y "dist\ThumbnailPipeline\main.exe" "dist\ThumbnailPipeline\ThumbnailPipeline.exe" >nul
+
+:: Tao file CHAY_TOOL.bat de tien click dup
+echo @echo off > "dist\ThumbnailPipeline\CHAY_TOOL.bat"
+echo cd /d "%%~dp0" >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
+echo start "" main.exe >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
 
 echo.
 echo =====================================================================

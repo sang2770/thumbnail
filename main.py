@@ -16,10 +16,20 @@ import os
 import sys
 from pathlib import Path
 
-# Dam bao thu muc goc duoc them vao sys.path khi chay tu PyInstaller bundle
-BASE_DIR = Path(__file__).resolve().parent
+# Dam bao thu muc goc duoc them vao sys.path va PATH khi chay tu PyInstaller bundle
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+# Tu dong them BASE_DIR vao PATH de ffmpeg.exe / ffprobe.exe duoc nhan dien ngay lap tuc
+base_dir_str = str(BASE_DIR)
+current_path = os.environ.get("PATH", "")
+if base_dir_str not in current_path:
+    os.environ["PATH"] = base_dir_str + os.pathsep + current_path
 
 
 def check_gpu():

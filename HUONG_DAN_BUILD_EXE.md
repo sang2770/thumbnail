@@ -93,8 +93,22 @@ Khi chia sẻ cho người khác, bạn chỉ cần nén toàn bộ thư mục `
 
 ## 4. Phương Án Build Tự Động Bằng GitHub Actions (Từ Máy Mac)
 
-Nếu hiện tại bạn đang sử dụng máy Mac và không có sẵn máy Windows:
-1. Đẩy mã nguồn lên GitHub.
-2. Vào tab **Actions** trên GitHub repository.
-3. Chọn workflow **Build Windows EXE** và nhấn **Run workflow**.
-4. Chờ build xong và tải file **`ThumbnailPipeline-Windows.zip`** về từ mục **Artifacts**.
+Workflow tại `.github/workflows/build_windows_exe.yml` đã được thiết lập để **tự động tải 100% các dependency**:
+- **FFmpeg & FFprobe**: Tự động tải bản Windows và tích hợp vào bộ cài.
+- **InsightFace Model (`buffalo_l`)**: Tự động tải trọn bộ 5 model ONNX nhận diện khuôn mặt (~288MB).
+- **Real-ESRGAN Model**: Tự động kiểm tra và tích hợp model làm nét ảnh (`realesrgan_x4.onnx`).
+- **GPU Accelerator**: Tự động cài DirectML (tương thích mọi card NVIDIA RTX 50x/40x/30x, AMD, Intel).
+- **Trọn gói phân phối**: Tạo sẵn `main.exe`, `CHAY_TOOL.bat`, các thư mục `input/`, `output/`, `net/` và tài liệu hướng dẫn nhanh.
+
+### Các bước thực hiện:
+1. Đẩy mã nguồn lên GitHub:
+   ```bash
+   git add .
+   git commit -m "Auto download dependencies for standalone main.exe"
+   git push origin main
+   ```
+2. Mở repository trên trình duyệt, chuyển vào tab **Actions**.
+3. Chọn workflow **Build Windows EXE** ở cột bên trái và nhấn **Run workflow**.
+4. Chờ build xong (~3-5 phút) và tải file **`ThumbnailPipeline-Windows.zip`** về từ mục **Artifacts** (hoặc tab **Releases** nếu gắn tag `v*`).
+5. Người dùng cuối chỉ cần giải nén file zip và click đúp vào **`main.exe`** là chạy được ngay, hoạt động **hoàn toàn offline** mà không cần cài đặt gì thêm!
+

@@ -25,7 +25,23 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-MODEL = Path("models/realesrgan_x4.onnx")
+def get_model_path():
+    possible_dirs = []
+    if getattr(sys, "frozen", False):
+        possible_dirs.append(Path(sys.executable).resolve().parent)
+        if hasattr(sys, "_MEIPASS"):
+            possible_dirs.append(Path(sys._MEIPASS))
+    possible_dirs.append(Path(__file__).resolve().parent)
+    possible_dirs.append(Path.cwd().resolve())
+
+    for d in possible_dirs:
+        cand = d / "models" / "realesrgan_x4.onnx"
+        if cand.is_file():
+            return cand
+    return Path("models/realesrgan_x4.onnx")
+
+MODEL = get_model_path()
+
 THU_MUC = Path("net")
 DUOI = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 

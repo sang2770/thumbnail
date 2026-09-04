@@ -18,7 +18,23 @@ from pathlib import Path
 
 INPUT_DIR = Path("input")
 OUT_DIR = Path("prompts")
-TEMPLATE = Path("prompt_template.md")
+def get_template_path():
+    possible_dirs = []
+    if getattr(sys, "frozen", False):
+        possible_dirs.append(Path(sys.executable).resolve().parent)
+        if hasattr(sys, "_MEIPASS"):
+            possible_dirs.append(Path(sys._MEIPASS))
+    possible_dirs.append(Path(__file__).resolve().parent)
+    possible_dirs.append(Path.cwd().resolve())
+
+    for d in possible_dirs:
+        cand = d / "prompt_template.md"
+        if cand.is_file():
+            return cand
+    return Path("prompt_template.md")
+
+TEMPLATE = get_template_path()
+
 
 # Gio la tuy chon (MM:SS,mmm van gap), milli-giay toi 4 chu so.
 TIMECODE = re.compile(r"^(?:\d{1,2}:)?\d{1,2}:\d{2}[,.]\d{1,4}\s*-->")

@@ -203,8 +203,19 @@ def build_app():
     prov_list = get_face_providers()
 
     # Kiem tra neu co san model buffalo_l offline trong models/buffalo_l thi uu tien dung
-    app_dir = Path(__file__).resolve().parent
-    model_root = str(app_dir) if (app_dir / "models" / "buffalo_l").is_dir() else "~/.insightface"
+    possible_roots = []
+    if getattr(sys, "frozen", False):
+        possible_roots.append(Path(sys.executable).resolve().parent)
+        if hasattr(sys, "_MEIPASS"):
+            possible_roots.append(Path(sys._MEIPASS))
+    possible_roots.append(Path(__file__).resolve().parent)
+    possible_roots.append(Path.cwd().resolve())
+
+    model_root = "~/.insightface"
+    for r in possible_roots:
+        if (r / "models" / "buffalo_l").is_dir():
+            model_root = str(r)
+            break
 
     # Thu lan luot tung provider: neu CUDA loi tren dong card 5x thi tu dong nhay sang DirectML / CPU
     for i in range(len(prov_list)):
