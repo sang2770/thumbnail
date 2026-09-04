@@ -113,6 +113,9 @@ if not exist "dist\ThumbnailPipeline\net" mkdir "dist\ThumbnailPipeline\net"
 if exist "ffmpeg.exe" copy /y "ffmpeg.exe" "dist\ThumbnailPipeline\" >nul
 if exist "ffprobe.exe" copy /y "ffprobe.exe" "dist\ThumbnailPipeline\" >nul
 
+:: Tao file copy ThumbnailPipeline.exe neu muon tuong thich ca 2 ten
+if exist "dist\ThumbnailPipeline\main.exe" copy /y "dist\ThumbnailPipeline\main.exe" "dist\ThumbnailPipeline\ThumbnailPipeline.exe" >nul
+
 echo.
 echo =====================================================================
 echo                      BUILD THANH CONG!
@@ -121,7 +124,7 @@ echo  Thu muc chuong trinh hoan chinh da san sang tai:
 echo      dist\ThumbnailPipeline\
 echo.
 echo  File chay chinh:
-echo      dist\ThumbnailPipeline\ThumbnailPipeline.exe
+echo      dist\ThumbnailPipeline\main.exe
 echo.
 echo  Ban chi can nen (zip) thu muc dist\ThumbnailPipeline la co the gui
 echo  cho nguoi khac su dung ngay lap tuc ma khong can cai dat Python.

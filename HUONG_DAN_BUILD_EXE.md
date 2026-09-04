@@ -69,10 +69,11 @@ pyinstaller ThumbnailPipeline.spec
 ## 3. Kết Quả & Cách Sử Dụng Bản Build
 
 Sau khi build xong, kết quả nằm tại thư mục: **`dist\ThumbnailPipeline\`**
+File chạy chính: **`dist\ThumbnailPipeline\main.exe`** (hoặc `ThumbnailPipeline.exe`)
 
 ### Cách sử dụng:
 1. **Cách 1 (Giao diện dòng lệnh trực quan)**:
-   - Click đúp vào `ThumbnailPipeline.exe`.
+   - Click đúp vào **`main.exe`**.
    - Một menu bằng tiếng Việt sẽ hiện ra cho phép chọn:
      - Phím 1: Tải video & phụ đề Google Drive (`tai.py`).
      - Phím 2: Trích xuất nhân vật & tạo Prompt (`make.py`).
@@ -80,11 +81,11 @@ Sau khi build xong, kết quả nằm tại thư mục: **`dist\ThumbnailPipelin
      - Phím 4: Ghép tiêu đề (`title.py`).
      - Phím 5: Kiểm tra thông tin GPU & bo tăng tốc (`gpu`).
 2. **Cách 2 (Chạy qua dòng lệnh / Batch script)**:
-   - `ThumbnailPipeline.exe gpu`
-   - `ThumbnailPipeline.exe tai https://drive.google.com/...`
-   - `ThumbnailPipeline.exe make ten_phim --cast 3`
-   - `ThumbnailPipeline.exe net --rong 1280 --jpg`
-   - `ThumbnailPipeline.exe title "output/anh.png" "Tieu De Phim"`
+   - `main.exe gpu`
+   - `main.exe tai https://drive.google.com/...`
+   - `main.exe make ten_phim --cast 3`
+   - `main.exe net --rong 1280 --jpg`
+   - `main.exe title "output/anh.png" "Tieu De Phim"`
 
 Khi chia sẻ cho người khác, bạn chỉ cần nén toàn bộ thư mục `dist\ThumbnailPipeline\` thành file `.zip`. Người dùng cuối giải nén ra là chạy được ngay, không cần cài đặt Python!
 

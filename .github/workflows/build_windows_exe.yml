@@ -52,6 +52,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\input
           New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\output
           New-Item -ItemType Directory -Force -Path dist\ThumbnailPipeline\net
+          if (Test-Path "dist\ThumbnailPipeline\main.exe") {
+              Copy-Item "dist\ThumbnailPipeline\main.exe" -Destination "dist\ThumbnailPipeline\ThumbnailPipeline.exe"
+          }
           Compress-Archive -Path dist\ThumbnailPipeline\* -DestinationPath dist\ThumbnailPipeline-Windows.zip
 
       - name: Upload Windows Executable Artifact
