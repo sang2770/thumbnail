@@ -173,7 +173,23 @@ def phien(o_muon=None, batch_muon=None):
                 chay_thu(1, O_TINH)
                 return sess, sess.get_providers()[0], O_TINH, 1
 
-            gpu = any(g in pname for g in ("CUDA", "Dml", "CoreML"))
+            # Provider THAT SU dang chay, khong phai provider ta YEU CAU.
+            #
+            # ONNX Runtime khong nem loi khi provider GPU khoi tao that bai - no
+            # in "EP Error ... Falling back to CPUExecutionProvider and retrying"
+            # roi tao session bang CPU va tra ve BINH THUONG. Nen try/except o
+            # day khong bao gio bat duoc, va neu doc ten provider tu cai da yeu
+            # cau thi ta tuong dang o GPU trong khi that ra dang o CPU.
+            #
+            # Hau qua da thay tren GitHub Actions: DirectML co trong danh sach
+            # nhung khong co card do hoa ("Specified display adapter handle is
+            # invalid"), code tuong la GPU nen di do o 384 roi do batch 2 va 4 -
+            # tat ca tren CPU. Mot phep thu 45 giay thanh 10 phut 24.
+            # Chuyen nay xay ra ca voi nguoi dung that: ban .exe luon kem
+            # onnxruntime-directml, nen chay qua Remote Desktop / trong may ao /
+            # driver loi la dung canh nay.
+            that_su = sess.get_providers()[0]
+            gpu = any(g in that_su for g in ("CUDA", "Dml", "CoreML"))
 
             # Canh o TOI DA con chay duoc. Chon canh cho tung anh de sau (chon_o).
             if o_muon:
@@ -310,6 +326,12 @@ def lam_net(img, sess, ten_vao, ten_ra, batch_size=1, canh_o=O):
     coords = [(y, x) for y in ys for x in xs]
     tong_o = len(coords)
 
+    # Batch khong duoc lon hon so o co thuc. O dem la o RONG nhung van bi model
+    # chay day du, chi de ket qua bi nem di - anh nho ma batch to thi phan dem
+    # thanh phan chinh. Da thay tren log: 2 o that voi batch=4 -> chay 4 o, tuc
+    # gap doi cong viec can thiet.
+    batch_size = max(1, min(batch_size, tong_o))
+
     def ghep(ra_tile, y, x):
         Y, X = y * PHONG, x * PHONG
         acc[Y:Y + O * PHONG, X:X + O * PHONG] += ra_tile * mn
@@ -389,7 +411,9 @@ def main():
     sess, prov, o_toi_da, batch_size = phien(o_muon=a.o, batch_muon=a.batch)
     ten_vao = sess.get_inputs()[0].name
     ten_ra = sess.get_outputs()[0].name
-    print(f"Real-ESRGAN x4 | {prov} | o<={o_toi_da} batch={batch_size}"
+    # "<=" ca hai con so: canh o chon rieng cho tung anh (chon_o), con batch bi
+    # kep lai theo so o co thuc cua anh do (trong lam_net).
+    print(f"Real-ESRGAN x4 | {prov} | o<={o_toi_da} batch<={batch_size}"
           f" | {len(files)} anh\n")
 
     for p in files:

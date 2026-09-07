@@ -204,18 +204,29 @@ def get_face_providers():
     return providers
 
 
-def co_gpu():
-    """Co bo tang toc GPU nao khong. Xem duoc ma khong phai mo session."""
+def provider_thuc_su(app):
+    """Provider THAT SU dang chay, khong phai provider ta YEU CAU.
+
+    Khong duoc dua vao ort.get_available_providers(): ham do liet ke provider
+    duoc BIEN DICH VAO goi onnxruntime, khong phai provider dung duoc tren may
+    nay. Ban .exe luon kem onnxruntime-directml nen DirectML LUC NAO cung co
+    trong danh sach do.
+
+    Va ONNX Runtime khong nem loi khi provider GPU khoi tao that bai - no in
+    "EP Error ... Falling back to CPUExecutionProvider and retrying" roi tra ve
+    session CPU binh thuong. Nen chi co session moi biet su that.
+
+    Doc sai cho nay thi tren may DirectML hong (Remote Desktop, may ao, driver
+    loi) ta tuong dang o GPU va chi mo 2-6 luong, trong khi that ra dang o CPU
+    va dang bo mat phan tang toc 2.6x cua 32 luong.
+    """
     try:
-        import onnxruntime as ort
-    except ImportError:
-        return False
-    return any(p in ort.get_available_providers() for p in
-               ("CUDAExecutionProvider", "DmlExecutionProvider",
-                "CoreMLExecutionProvider"))
+        return app.det_model.session.get_providers()[0]
+    except Exception:
+        return "khong ro"
 
 
-def so_luong(gpu=None):
+def so_luong(gpu):
     """So khung hinh quet CUNG LUC.
 
     Cac model cua InsightFace deu ti hon (112x112 den 192x192). Do thuc te thi
@@ -235,8 +246,6 @@ def so_luong(gpu=None):
     cho giai ma JPEG la du.
     """
     lam = os.cpu_count() or 4
-    if gpu is None:
-        gpu = co_gpu()
     if gpu:
         return min(6, max(2, lam // 2))
     return min(32, max(4, lam * 2))
@@ -290,7 +299,16 @@ def build_app(intra_op=None):
             # Test thu tren dummy image de bat loi CUDA sm_120/kernel tren RTX 50x ngay lap tuc
             dummy = np.zeros((640, 640, 3), dtype=np.uint8)
             app.get(dummy)
-            print(f"  [GPU/AI] InsightFace khoi tao thanh cong: {prov_name} (ctx={ctx_id})")
+            # In provider THAT SU, khong phai cai vua yeu cau: ONNX Runtime co
+            # the da am tham roi ve CPU (xem provider_thuc_su). In ten yeu cau
+            # thi log bao "DirectML thanh cong" trong khi dang chay bang CPU.
+            that_su = provider_thuc_su(app)
+            if that_su != prov_name:
+                print(f"  [GPU/AI] Da yeu cau {prov_name} nhung ONNX Runtime"
+                      f" roi ve {that_su}")
+            else:
+                print(f"  [GPU/AI] InsightFace khoi tao thanh cong:"
+                      f" {that_su} (ctx={ctx_id})")
             return app
         except Exception as e:
             print(f"  ! {prov_name} gap loi khoi tao hoac thieu kernel ({e}). Dang chuyen sang fallback...")
@@ -490,14 +508,22 @@ def scan(frames, fps, cache_file, rescan=False, luong=None):
         with open(cache_file, "rb") as fh:
             return pickle.load(fh)
 
-    gpu = co_gpu()
+    # intra_op phai chot LUC TAO session, tuc truoc khi biet provider thuc su.
+    # Khong sao: do duoc thi o muc 32 luong, intra_op gan nhu khong anh huong
+    # (=1 cho 424ms, =2 cho 417ms, =4 cho 432ms), con khi that su chay GPU thi
+    # GPU moi la noi lam viec. Nen cu dat 1 khi may du nhan de chay nhieu khung
+    # song song - tranh 32 luong x 16 nhan moi luong danh nhau.
+    lam = os.cpu_count() or 4
+    app = build_app(intra_op=1 if lam > 4 else None)
+
+    that_su = provider_thuc_su(app)
+    gpu = any(g in that_su for g in ("CUDA", "Dml", "CoreML"))
     nl = luong or so_luong(gpu)
-    # Nhieu khung chay song song -> moi model chi nen dung mot nhan (xem so_luong)
-    app = build_app(intra_op=1 if nl > 1 else None)
+
     hp = chuan_bi_hai_pha(app)
     if hp is None:
         print("  ! ban insightface nay khac cau truc -> quet mot pha nhu cu")
-    print(f"  quet {nl} khung song song"
+    print(f"  quet {nl} khung song song tren {that_su}"
           f"{' (GPU la cho nghen nen khong can nhieu hon)' if gpu else ''}")
 
     records, seen = [], 0
