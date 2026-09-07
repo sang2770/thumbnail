@@ -29,14 +29,47 @@ jobs:
       - name: Install Python dependencies
         shell: pwsh
         run: |
+          # pwsh chi lam step do khi lenh CUOI CUNG loi. Truoc day
+          # 'pip install -r requirements.txt' chet o giua van cho step mau xanh,
+          # roi build di tiep voi moi truong thieu thu vien - dung la cai da gay
+          # ra "No module named 'cv2'". Nen duoi day kiem $LASTEXITCODE sau TUNG
+          # lenh. Khong dat ErrorActionPreference = Stop: tu PowerShell 7.4,
+          # lenh native tra ma khac 0 se nem loi ket thuc, ma 'pip uninstall'
+          # mot goi chua cai lai la truong hop binh thuong.
+          $ErrorActionPreference = "Continue"
+
+          # Luon goi qua 'python -m pip', KHONG dung 'pip' tran. Tren Windows,
+          # 'python -m pip install --upgrade pip' thay chinh file pip.exe dang
+          # chay, nen 'pip' o cac dong sau co the tro sang mot Python khac -
+          # thu vien cai vao mot noi con PyInstaller doc o noi khac.
           python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { Write-Error "nang cap pip that bai"; exit 1 }
+
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { Write-Error "cai requirements.txt that bai"; exit 1 }
+
           # Go onnxruntime CPU mac dinh de uu tien onnxruntime-directml (tuong thich 100% GPU RTX 50x / 40x / 30x / AMD / Intel tren Windows)
-          pip uninstall -y onnxruntime
+          python -m pip uninstall -y onnxruntime
           # Ghim PyInstaller theo phien ban LON. Ban 6 dat data vao thu muc con
           # _internal/, ban 5 dat canh exe - doi ban lon la doi bo cuc thu muc
           # phat hanh, hong ngay ma khong bao gi.
-          pip install onnxruntime-directml "pyinstaller>=6.6,<7"
+          python -m pip install onnxruntime-directml "pyinstaller>=6.6,<7"
+          if ($LASTEXITCODE -ne 0) { Write-Error "cai onnxruntime-directml / pyinstaller that bai"; exit 1 }
+
+      - name: Verify Python environment
+        shell: pwsh
+        run: |
+          # Nap thu tung thu vien PyInstaller se phai dong goi. Thieu mot cai la
+          # bao ngay o day, kem ten cu the - thay vi de no no ra thanh
+          # ModuleNotFoundError giua chung, hoac tao ra file .exe thieu DLL.
+          Write-Host "python = $((Get-Command python).Source)"
+          python -c "import sys; print('sys.executable =', sys.executable)"
+          python -m pip --version
+          python -c "import cv2, numpy, PIL, onnx, onnxruntime, insightface, gdown, yt_dlp; print('cv2', cv2.__version__); print('numpy', numpy.__version__); print('onnx', onnx.__version__); print('onnxruntime', onnxruntime.__version__); print('insightface', insightface.__version__); print('providers', onnxruntime.get_available_providers())"
+          if ($LASTEXITCODE -ne 0) { Write-Error "[X] Moi truong Python thieu thu vien - xem dong loi ngay tren"; exit 1 }
+          python -c "import onnxruntime as o, sys; sys.exit(0 if 'DmlExecutionProvider' in o.get_available_providers() else 1)"
+          if ($LASTEXITCODE -ne 0) { Write-Error "[X] Khong co DmlExecutionProvider - onnxruntime-directml chua cai dung"; exit 1 }
+          Write-Host "[+] Moi truong day du, co DirectML."
 
       - name: Setup FFmpeg & FFprobe
         uses: FedericoCarboni/setup-ffmpeg@v3
@@ -138,8 +171,11 @@ jobs:
           # to hon -> bot phan chong lan bi tinh lai; batch that su chay duoc).
           # Sinh san o day de ban .exe khong phai keo theo thu vien onnx, va de
           # nguoi dung khong phai cho lan chay dau tien.
-          python -c "import sys; sys.path.insert(0,'.'); import net; ok=net._noi_shape_dong(net.MODEL, net.MODEL_DONG); print('da tao', net.MODEL_DONG, ok); sys.exit(0 if ok and net.MODEL_DONG.is_file() else 1)"
+          python noi_shape.py
           if ($LASTEXITCODE -ne 0) { Write-Error "[X] Khong tao duoc ban model shape dong"; exit 1 }
+          if (-not (Test-Path "models\realesrgan_x4_dong.onnx")) {
+              Write-Error "[X] Khong thay models\realesrgan_x4_dong.onnx"; exit 1
+          }
           Write-Host "[+] Da co ban model shape dong."
 
       - name: Build Standalone main.exe with PyInstaller

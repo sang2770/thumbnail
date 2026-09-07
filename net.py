@@ -94,39 +94,13 @@ def tao_session_options():
 
 
 def _noi_shape_dong(src, dest):
-    """Sua khai bao shape [1,3,128,128] thanh [N,3,H,W]. Tra ve True neu xong.
-
-    Chi sua METADATA cua dau vao/dau ra, khong dung toi mot node nao. An toan vi
-    graph thuan convolution (xem docstring dau file) - da kiem chung dau ra giong
-    het den tung bit.
-    """
+    """Nap cham noi_shape.py. De rieng file vi buoc build chi can onnx, khong
+    can cv2/onnxruntime ma net.py keo theo (xem docstring cua noi_shape.py)."""
     try:
-        import onnx
+        from noi_shape import noi_shape_dong
     except ImportError:
         return False
-    try:
-        m = onnx.load(str(src))
-        for ten, vals in ((m.graph.input, ("N", "H", "W")),
-                          (m.graph.output, ("N", "H4", "W4"))):
-            for v in ten:
-                d = v.type.tensor_type.shape.dim
-                if len(d) != 4:
-                    return False
-                for k, param in zip((0, 2, 3), vals):
-                    d[k].ClearField("dim_value")
-                    d[k].dim_param = param
-        # Bo het shape cua cac tensor TRUNG GIAN. Ban export goc ghi cung ca
-        # 1093 cai theo co 128x128; de nguyen thi ONNX Runtime suy nguoc ra dau
-        # ra van phai la 512x512 va canh bao om om moi o mot dong. Day chi la
-        # metadata goi y, xoa di thi Runtime tu suy lai theo shape thuc.
-        del m.graph.value_info[:]
-        tam = dest.with_suffix(".onnx.tam")
-        onnx.save(m, str(tam))
-        tam.replace(dest)
-        return True
-    except Exception as e:
-        print(f"  ! khong noi duoc shape thanh dong ({e}) -> dung o {O_TINH} nhu cu")
-        return False
+    return noi_shape_dong(src, dest)
 
 
 def duong_model():

@@ -44,6 +44,7 @@ hiddenimports = [
     'extract_char',
     'make',
     'net',
+    'noi_shape',
     'tai',
     'title',
 ] + insight_hidden + onnx_hidden
