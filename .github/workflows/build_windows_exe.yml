@@ -20,10 +20,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      # PHAI la 3.12 tro len: requirements.txt ghim numpy==2.5.2, ma numpy 2.5.x
+      # khai bao Requires-Python >=3.12. Tren 3.11 thi ban numpy cao nhat con
+      # lay duoc chi la 2.4.6, nen pip do thang: "No matching distribution
+      # found for numpy==2.5.2".
+      # Khong chon 3.13: onnx==1.22.0 khong co wheel cp313 cho win_amd64.
+      # Cac goi con lai (gdown, insightface, onnxruntime, opencv, pillow,
+      # yt-dlp, onnxruntime-directml) deu co wheel cho 3.12.
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Python dependencies

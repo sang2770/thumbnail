@@ -42,7 +42,9 @@ CUDA error: no kernel image is available for execution on the device
 ## 2. Các Bước Build Bằng Tay (Nếu Không Dùng File .bat)
 
 ### Bước 1: Cài đặt Python trên Windows
-- Tải và cài đặt **Python 3.10 hoặc 3.11** từ [python.org](https://www.python.org/downloads/).
+- Tải và cài đặt **Python 3.12 trở lên** từ [python.org](https://www.python.org/downloads/).
+  (Bắt buộc 3.12+ vì `requirements.txt` ghim `numpy==2.5.2`, mà numpy 2.5.x yêu
+  cầu `Python >=3.12`. Dùng 3.11 thì `pip install` đổ ngay.)
 - ⚠️ **Rất quan trọng**: Nhớ tích chọn ô **`Add python.exe to PATH`** trong lúc cài.
 
 ### Bước 2: Tạo môi trường ảo và cài đặt thư viện

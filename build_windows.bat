@@ -14,7 +14,7 @@ echo [*] Buoc 1: Kiem tra Python...
 python --version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [!] LOI: Khong tim thay Python!
-    echo     Vui long cai dat Python 3.10 hoac 3.11 tu https://www.python.org/
+    echo     Vui long cai dat Python 3.12 tro len tu https://www.python.org/
     echo     Luu y nho tich chon "Add python.exe to PATH" khi cai.
     goto :LOI
 )

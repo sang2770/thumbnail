@@ -5,7 +5,9 @@ lệnh gọi Python, cách cài `ffmpeg`, và công cụ clipboard.
 
 ## Cài
 
-**Chung cho cả ba hệ** — cần Python 3.10 trở lên:
+**Chung cho cả ba hệ** — cần **Python 3.12 trở lên** (`requirements.txt` ghim
+`numpy==2.5.2`, mà numpy 2.5.x khai báo `Requires-Python >=3.12`; trên 3.11 thì
+`pip install` đổ ngay ở bước này):
 
 ```
 python3 -m venv .venv
