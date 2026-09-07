@@ -91,7 +91,10 @@ if not exist "models\realesrgan_x4.onnx" (
     echo     -> Da co models\realesrgan_x4.onnx.
 )
 
-if not exist "models\buffalo_l\scrfd_10g_bnkps.onnx" (
+:: Kiem bang w600k_r50.onnx - mot trong 5 file THAT co trong buffalo_l.zip.
+:: Truoc day kiem "scrfd_10g_bnkps.onnx" la file cua bo antelopev2, khong he
+:: nam trong buffalo_l, nen lan build nao cung tai lai 288MB.
+if not exist "models\buffalo_l\w600k_r50.onnx" (
     echo [*] Dang tu dong tai bo model InsightFace buffalo_l (288MB)...
     if not exist "models\buffalo_l" mkdir "models\buffalo_l"
     powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip', 'models\buffalo_l.zip')"

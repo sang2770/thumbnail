@@ -7,7 +7,11 @@ block_cipher = None
 
 # Thu thap toan bo package data, binaries va hidden imports cho InsightFace va ONNXRuntime
 datas = [
-    ('models', 'models'),
+    # KHONG dong 'models' vao day. Ca hai duong build (workflow GitHub va
+    # build_windows.bat) deu da copy thu muc models ra CANH main.exe, ma
+    # get_model_path()/build_app() cung tra cho do truoc tien. De o day nua thi
+    # bo model (~420MB: buffalo_l + hai ban realesrgan) bi dong goi HAI LAN,
+    # gap doi dung luong ban tai ve ma khong duoc gi.
     ('prompt_template.md', '.'),
     ('kenh_mau.tsv', '.'),
 ]
@@ -71,7 +75,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX nen DLL lai, va no lam HONG DLL cua ONNX Runtime / OpenCV - kieu loi
+    # chi hien khi nguoi dung chay, khong hien luc build. Runner hien khong co
+    # UPX nen dong nay dang la vo hieu, tuc mot cai bay cho ngay UPX xuat hien.
+    upx=False,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -86,7 +93,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,          # xem ghi chu o EXE() phia tren
     upx_exclude=[],
     name='ThumbnailPipeline',
 )

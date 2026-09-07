@@ -10,13 +10,38 @@ Khac unsharp mask o cho: unsharp chi keo tuong phan o vien san co, anh nhoe bet
 thi ra anh nhoe bet co vien. Real-ESRGAN DUNG LAI chi tiet - toc, mi mat, thoi
 vai - nen anh qua tay AI nhieu lan moi lay lai duoc do gion.
 
-Model nhan dung 128x128, tra ve 512x512. Anh that thi to hon nhieu nen phai cat
-o va ghep lai. Cho hai o ke nhau chong len nhau roi tron theo do doc tuyen tinh:
-cat sat mep khong chong lan thi cho noi hien ra mot duong ke doc anh, vi moi o
-duoc model doan sang toi hoi khac nhau.
+File model goc khai bao shape CO DINH CUNG [1,3,128,128] -> [1,3,512,512]. Anh
+that thi to hon nhieu nen phai cat o va ghep lai. Cho hai o ke nhau chong len
+nhau roi tron theo do doc tuyen tinh: cat sat mep khong chong lan thi cho noi
+hien ra mot duong ke doc anh, vi moi o duoc model doan sang toi hoi khac nhau.
+
+    python3 net.py --o 384          # o to hon nua (nhanh hon, ton VRAM hon)
+    python3 net.py --o 128 --batch 1  # ve dung hanh vi cu
+
+TOC DO - vi sao noi shape thanh dong:
+Graph nay THUAN convolution (Conv/LeakyRelu/Concat/Add/Mul/Clip + 2 Resize dung
+he so ti le), khong co Reshape nao ghim cung batch. Nen sua khai bao shape thanh
+dong la dung ve mat toan hoc - da do: dau ra giong het den tung bit (sai lech
+tuyet doi 0.0).
+
+Mo ra hai thu:
+
+1. O TO HON. Voi o 128 va vien chong 16 thi buoc nhay chi 96 -> moi diem anh bi
+   tinh (128/96)^2 = 1.78 lan. O cang to phan lam thua cang nho. Do thuc te,
+   thoi gian tren moi pixel HUU ICH:
+       o=128  111.8 us   (lam thua 1.78x)
+       o=256   75.3 us   (lam thua 1.31x)   <- mac dinh moi
+       o=384   69.3 us   (lam thua 1.19x)
+   Tuc chi doi mot con so la nhanh gap 1.5 lan, khong danh doi gi ve chat luong
+   (vien chong van 16 pixel nen cho noi khong xau di).
+
+2. BATCH THAT. Code cu co san duong batch nhung file model ghim batch=1 nen phep
+   thu batch LUON nem loi -> batch_size luon roi ve 1, ca nhanh batch la code
+   chet. Gio moi chay that, GPU khong con ngoi cho tung o mot.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -41,34 +66,96 @@ def get_model_path():
     return Path("models/realesrgan_x4.onnx")
 
 MODEL = get_model_path()
+# Ban da noi shape thanh dong. Workflow build san file nay va dong goi kem, nen
+# ban .exe khong can toi thu vien onnx luc chay.
+MODEL_DONG = MODEL.with_name(MODEL.stem + "_dong.onnx")
 
 THU_MUC = Path("net")
 DUOI = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
-O = 128          # canh o dau vao model
+O = 256          # canh o "tieu bieu", dung khi phai chot mot con so
+O_MAX = 384      # canh o to nhat duoc phep dung
+O_TINH = 128     # canh o BAT BUOC khi chi co file model shape co dinh
 CHONG = 16       # so pixel hai o ke nhau chong len nhau
 PHONG = 4        # model phong 4 lan
 
 
 def tao_session_options():
     """Toi uu cac thiet lap da luong va do thi tinh toan cho ONNX Runtime."""
-    import os
     opts = ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     opts.enable_mem_pattern = True
     cpu_count = os.cpu_count() or 4
-    opts.intra_op_num_threads = min(8, cpu_count)
+    # Day la mot model to chay mot o moi lan, khac han cac model ti hon cua
+    # InsightFace: o day tang luong CO an. Nhung tren 16 luong thi chi phi dong
+    # bo bat dau an lai phan thang.
+    opts.intra_op_num_threads = min(16, cpu_count)
     return opts
 
 
-def phien():
+def _noi_shape_dong(src, dest):
+    """Sua khai bao shape [1,3,128,128] thanh [N,3,H,W]. Tra ve True neu xong.
+
+    Chi sua METADATA cua dau vao/dau ra, khong dung toi mot node nao. An toan vi
+    graph thuan convolution (xem docstring dau file) - da kiem chung dau ra giong
+    het den tung bit.
+    """
+    try:
+        import onnx
+    except ImportError:
+        return False
+    try:
+        m = onnx.load(str(src))
+        for ten, vals in ((m.graph.input, ("N", "H", "W")),
+                          (m.graph.output, ("N", "H4", "W4"))):
+            for v in ten:
+                d = v.type.tensor_type.shape.dim
+                if len(d) != 4:
+                    return False
+                for k, param in zip((0, 2, 3), vals):
+                    d[k].ClearField("dim_value")
+                    d[k].dim_param = param
+        # Bo het shape cua cac tensor TRUNG GIAN. Ban export goc ghi cung ca
+        # 1093 cai theo co 128x128; de nguyen thi ONNX Runtime suy nguoc ra dau
+        # ra van phai la 512x512 va canh bao om om moi o mot dong. Day chi la
+        # metadata goi y, xoa di thi Runtime tu suy lai theo shape thuc.
+        del m.graph.value_info[:]
+        tam = dest.with_suffix(".onnx.tam")
+        onnx.save(m, str(tam))
+        tam.replace(dest)
+        return True
+    except Exception as e:
+        print(f"  ! khong noi duoc shape thanh dong ({e}) -> dung o {O_TINH} nhu cu")
+        return False
+
+
+def duong_model():
+    """-> (duong dan model, co_shape_dong). Tao ban dong mot lan roi dung mai."""
+    if MODEL_DONG.is_file():
+        return MODEL_DONG, True
+    if not MODEL.is_file():
+        sys.exit(f"Thieu {MODEL}. Tai lai bang lenh trong README.")
+    # Ghi canh model goc. Neu thu muc chi doc (vd cai trong Program Files) thi
+    # thoi, chay tiep bang model tinh.
+    try:
+        if _noi_shape_dong(MODEL, MODEL_DONG):
+            print(f"  [1 lan] da tao ban model shape dong: {MODEL_DONG.name}")
+            return MODEL_DONG, True
+    except OSError as e:
+        print(f"  ! khong ghi duoc {MODEL_DONG.name} ({e}) -> dung o {O_TINH}")
+    return MODEL, False
+
+
+def phien(o_muon=None, batch_muon=None):
     """Chon bo tang toc nhanh nhat co san tren may nay.
 
     Thu tu uu tien: CUDA -> DirectML (cuc chuan cho dong card 5x tren Windows) -> CoreML -> CPU.
     Tu dong kiem tra va fallback neu driver CUDA tren dong card 5x chua ho tro kernel sm_120.
+
+    -> (sess, ten_provider, canh_o, batch). Canh o va batch deu duoc DO THU that
+    su bang mot lan chay: het VRAM thi tu tut xuong muc thap hon chu khong chet.
     """
-    if not MODEL.is_file():
-        sys.exit(f"Thieu {MODEL}. Tai lai bang lenh trong README.")
+    model_path, dong = duong_model()
 
     co = ort.get_available_providers()
     providers_cand = []
@@ -77,7 +164,10 @@ def phien():
         providers_cand.append(("CUDAExecutionProvider", {
             "device_id": 0,
             "arena_extend_strategy": "kNextPowerOfTwo",
-            "cudnn_conv_algo_search": "HEURISTIC",
+            # Anh nao cung chay hang tram o CUNG MOT shape, nen bo tien do mot
+            # lan tim kernel nhanh nhat roi huong loi ca chang duong con lai.
+            # HEURISTIC chi loi khi shape doi lien tuc - khong phai o day.
+            "cudnn_conv_algo_search": "EXHAUSTIVE",
             "do_copy_in_default_stream": True,
         }))
     if "DmlExecutionProvider" in co:
@@ -95,32 +185,76 @@ def phien():
         first_prov = cur_list[0]
         pname = first_prov[0] if isinstance(first_prov, tuple) else first_prov
         try:
-            sess = ort.InferenceSession(str(MODEL), sess_options=opts, providers=cur_list)
-            # Test inference tren o 128x128 de chac chan khong bi loi kernel tren card 5x
+            sess = ort.InferenceSession(str(model_path), sess_options=opts,
+                                        providers=cur_list)
             ten_vao = sess.get_inputs()[0].name
             ten_ra = sess.get_outputs()[0].name
-            dummy = np.zeros((1, 3, O, O), dtype=np.float32)
-            sess.run([ten_ra], {ten_vao: dummy})
 
-            # Kiem tra xem model co ho tro chay batch (gom nhieu o cung luc) khong
-            batch_size = 1
-            if any(g in pname for g in ("CUDA", "Dml", "CoreML")):
+            def chay_thu(n, canh):
+                x = np.zeros((n, 3, canh, canh), dtype=np.float32)
+                sess.run([ten_ra], {ten_vao: x})
+
+            # Model shape co dinh thi khong co gi de chon: 1 o 128, batch 1.
+            if not dong:
+                chay_thu(1, O_TINH)
+                return sess, sess.get_providers()[0], O_TINH, 1
+
+            gpu = any(g in pname for g in ("CUDA", "Dml", "CoreML"))
+
+            # Canh o TOI DA con chay duoc. Chon canh cho tung anh de sau (chon_o).
+            if o_muon:
+                chay_thu(1, o_muon)
+                o_toi_da = o_muon
+            elif gpu:
+                # Het VRAM la loi that, phai do. Thu tu to xuong nho: cai nao
+                # chay duoc thi moi cai nho hon deu chay duoc.
+                o_toi_da = None
+                for c in (O_MAX, 256, 192, O_TINH):
+                    try:
+                        chay_thu(1, c)
+                        o_toi_da = c
+                        break
+                    except Exception as e:
+                        print(f"  ! o {c} khong chay duoc ({str(e)[:60]})"
+                              f" -> thu o nho hon")
+                if o_toi_da is None:
+                    raise RuntimeError("khong o nao chay duoc")
+            else:
+                # CPU thi RAM du dat, do tung co o rat cham (o 384 mat ~8s) ma
+                # gan nhu chac chan chay duoc. Kiem mot lan o nho cho chac roi
+                # mo tran len het.
+                chay_thu(1, O_TINH)
+                o_toi_da = O_MAX
+
+            # Batch: CPU da bao hoa san nen batch khong giup gi (da do). Chi GPU
+            # moi loi, vi no dang phai cho tung o mot.
+            if batch_muon:
+                batch = batch_muon
                 try:
-                    test_b = np.zeros((4, 3, O, O), dtype=np.float32)
-                    sess.run([ten_ra], {ten_vao: test_b})
-                    batch_size = 8 if "CUDA" in pname else 4
-                except Exception:
-                    batch_size = 1
+                    chay_thu(batch, min(o_toi_da, O))
+                except Exception as e:
+                    print(f"  ! batch {batch} khong chay duoc ({str(e)[:70]}) -> ve 1")
+                    batch = 1
+            elif gpu:
+                batch = 1
+                for b in (2, 4):
+                    try:
+                        chay_thu(b, o_toi_da)
+                        batch = b
+                    except Exception:
+                        break
+            else:
+                batch = 1
 
-            act_prov = sess.get_providers()[0]
-            return sess, act_prov, batch_size
+            return sess, sess.get_providers()[0], o_toi_da, batch
         except Exception as e:
             print(f"  ! {pname} gap loi khoi tao ({e}). Chuyen sang provider tiep theo...")
             continue
 
     # Fallback ve CPU
-    sess = ort.InferenceSession(str(MODEL), sess_options=opts, providers=["CPUExecutionProvider"])
-    return sess, "CPUExecutionProvider", 1
+    sess = ort.InferenceSession(str(MODEL), sess_options=opts,
+                                providers=["CPUExecutionProvider"])
+    return sess, "CPUExecutionProvider", O_TINH, 1
 
 
 def mat_na(canh, vien):
@@ -136,8 +270,56 @@ def mat_na(canh, vien):
     return (w[:, None] * w[None, :])[:, :, None]
 
 
-def lam_net(img, sess, ten_vao, ten_ra, batch_size=1):
+def _luoi(n, canh):
+    """So o va be rong sau khi dem, cho mot truc."""
+    buoc = canh - 2 * CHONG
+    n_pad = max(canh, -(-max(0, n - canh) // buoc) * buoc + canh)
+    return len(range(0, n_pad - canh + 1, buoc)), n_pad
+
+
+def chon_o(h, w, o_toi_da, ung_vien=(128, 192, 256, 384)):
+    """Chon canh o tinh it pixel nhat cho DUNG anh nay.
+
+    O to thi bot duoc phan chong lan bi tinh lai, nhung lai phai DEM anh ra cho
+    du so o nguyen - anh nho ma o to thi phan dem lai thanh lang phi chinh. Hai
+    xu huong nguoc nhau nen khong co canh o nao tot nhat moi luc, va ket qua
+    KHONG don dieu theo kich thuoc o. Vi du anh 1280x720:
+        o=128 -> 104 o, 1.70M pixel
+        o=192 ->  40 o, 1.47M pixel
+        o=256 ->  24 o, 1.57M pixel   <- to hon ma lai ton hon
+        o=384 ->   8 o, 1.18M pixel   <- tot nhat
+    Nen cu tinh thang so pixel phai chay roi lay cai nho nhat.
+    """
+    tot, re_nhat = O_TINH, None
+    for c in ung_vien:
+        if c > o_toi_da:
+            continue
+        ny, _ = _luoi(h, c)
+        nx, _ = _luoi(w, c)
+        px = ny * nx * c * c
+        if re_nhat is None or px < re_nhat:
+            tot, re_nhat = c, px
+    return tot
+
+
+def _tong_trong_so(n_ra, moc_ra, canh_ra, w1):
+    """Cong don trong so 1 chieu cho mot truc.
+
+    Mat na la tich cua hai vector giong nhau (w[:,None] * w[None,:]) va cac o
+    nam tren luoi deu, nen TONG trong so cung tach thanh tich hai vector: cong
+    theo tung truc roi nhan ngoai. Truoc day code cong ca mat na 2 chieu cho
+    tung o vao mot mang bang co anh - dung ket qua nhung ton them mot mang
+    float32 to bang anh 4x va rat nhieu bang thong bo nho.
+    """
+    acc = np.zeros(n_ra, np.float32)
+    for m in moc_ra:
+        acc[m:m + canh_ra] += w1
+    return acc
+
+
+def lam_net(img, sess, ten_vao, ten_ra, batch_size=1, canh_o=O):
     h, w = img.shape[:2]
+    O = canh_o
     buoc = O - 2 * CHONG
     # Do them vien kieu guong cho anh phu kin so o nguyen. Do bang mau den thi
     # model coi vien den la chi tiet that va ve ra khung toi quanh anh.
@@ -147,7 +329,6 @@ def lam_net(img, sess, ten_vao, ten_ra, batch_size=1):
 
     rgb = cv2.cvtColor(pad, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     acc = np.zeros((nh * PHONG, nw * PHONG, 3), np.float32)
-    tong = np.zeros_like(acc)
     mn = mat_na(O * PHONG, CHONG * PHONG)
 
     ys = list(range(0, nh - O + 1, buoc))
@@ -155,38 +336,48 @@ def lam_net(img, sess, ten_vao, ten_ra, batch_size=1):
     coords = [(y, x) for y in ys for x in xs]
     tong_o = len(coords)
 
+    def ghep(ra_tile, y, x):
+        Y, X = y * PHONG, x * PHONG
+        acc[Y:Y + O * PHONG, X:X + O * PHONG] += ra_tile * mn
+
+    def mot_o(y, x):
+        o = rgb[y:y + O, x:x + O].transpose(2, 0, 1)[None]
+        ghep(sess.run([ten_ra], {ten_vao: o})[0][0].transpose(1, 2, 0), y, x)
+
     # Chay theo Batch de tan dung toi da cong suat GPU (CUDA/DirectML/CoreML)
     for idx in range(0, tong_o, batch_size):
         b_coords = coords[idx:idx + batch_size]
         try:
-            if len(b_coords) == 1:
-                y, x = b_coords[0]
-                o = rgb[y:y + O, x:x + O].transpose(2, 0, 1)[None]
-                ra_tile = sess.run([ten_ra], {ten_vao: o})[0][0].transpose(1, 2, 0)
-                Y, X = y * PHONG, x * PHONG
-                acc[Y:Y + O * PHONG, X:X + O * PHONG] += ra_tile * mn
-                tong[Y:Y + O * PHONG, X:X + O * PHONG] += mn
+            if batch_size == 1:
+                mot_o(*b_coords[0])
             else:
-                patches = [rgb[y:y + O, x:x + O].transpose(2, 0, 1) for y, x in b_coords]
-                b_tensor = np.stack(patches, axis=0)
-                ra_b = sess.run([ten_ra], {ten_vao: b_tensor})[0]
+                patches = [rgb[y:y + O, x:x + O].transpose(2, 0, 1)
+                           for y, x in b_coords]
+                # Dem cho du batch bang o rong. Giu shape dau vao KHONG DOI suot
+                # ca luot: doi shape la ONNX Runtime phai do lai kernel, dung
+                # dung cai ta vua bo tien mua bang EXHAUSTIVE. O dem khong duoc
+                # ghep vao ket qua nen khong lam sai gi.
+                thieu = batch_size - len(patches)
+                if thieu:
+                    patches += [np.zeros((3, O, O), np.float32)] * thieu
+                ra_b = sess.run([ten_ra], {ten_vao: np.stack(patches, axis=0)})[0]
                 for j, (y, x) in enumerate(b_coords):
-                    ra_tile = ra_b[j].transpose(1, 2, 0)
-                    Y, X = y * PHONG, x * PHONG
-                    acc[Y:Y + O * PHONG, X:X + O * PHONG] += ra_tile * mn
-                    tong[Y:Y + O * PHONG, X:X + O * PHONG] += mn
+                    ghep(ra_b[j].transpose(1, 2, 0), y, x)
         except Exception:
             # Fallback ve single tile neu batch loi
             for y, x in b_coords:
-                o = rgb[y:y + O, x:x + O].transpose(2, 0, 1)[None]
-                ra_tile = sess.run([ten_ra], {ten_vao: o})[0][0].transpose(1, 2, 0)
-                Y, X = y * PHONG, x * PHONG
-                acc[Y:Y + O * PHONG, X:X + O * PHONG] += ra_tile * mn
-                tong[Y:Y + O * PHONG, X:X + O * PHONG] += mn
+                mot_o(y, x)
 
-        print(f"\r    o {min(tong_o, idx + len(b_coords))}/{tong_o} (batch={batch_size})", end="", flush=True)
+        print(f"\r    o {min(tong_o, idx + len(b_coords))}/{tong_o}"
+              f" (o={O}, batch={batch_size})", end="", flush=True)
 
-    print("\r" + " " * 32 + "\r", end="")
+    print("\r" + " " * 40 + "\r", end="")
+
+    # Tong trong so tach thanh tich hai vector - xem _tong_trong_so.
+    w1 = mat_na(O * PHONG, CHONG * PHONG)[:, 0, 0]
+    hang = _tong_trong_so(nh * PHONG, [y * PHONG for y in ys], O * PHONG, w1)
+    cot = _tong_trong_so(nw * PHONG, [x * PHONG for x in xs], O * PHONG, w1)
+    tong = (hang[:, None] * cot[None, :])[:, :, None]
 
     ra = np.clip(acc / np.maximum(tong, 1e-6), 0, 1)
     ra = (ra[:h * PHONG, :w * PHONG] * 255).round().astype(np.uint8)
@@ -203,6 +394,11 @@ def main():
                     help="ep chieu rong cuoi cung, vd --rong 1280 cho thumbnail YouTube")
     ap.add_argument("--jpg", action="store_true",
                     help="ghi .jpg chat luong 95 thay vi .png (nhe hon nhieu lan)")
+    ap.add_argument("--o", type=int,
+                    help=f"canh o dua vao model (mac dinh {O}; to hon = nhanh hon,"
+                         f" ton VRAM hon)")
+    ap.add_argument("--batch", type=int,
+                    help="so o chay cung luc (mac dinh tu do tren GPU)")
     a = ap.parse_args()
 
     if a.anh:
@@ -216,10 +412,11 @@ def main():
     if not files:
         sys.exit(f"Khong co anh nao trong {a.thumuc}/  (nhan {', '.join(sorted(DUOI))})")
 
-    sess, prov, batch_size = phien()
+    sess, prov, o_toi_da, batch_size = phien(o_muon=a.o, batch_muon=a.batch)
     ten_vao = sess.get_inputs()[0].name
     ten_ra = sess.get_outputs()[0].name
-    print(f"Real-ESRGAN x4 | {prov} (batch={batch_size}) | {len(files)} anh\n")
+    print(f"Real-ESRGAN x4 | {prov} | o<={o_toi_da} batch={batch_size}"
+          f" | {len(files)} anh\n")
 
     for p in files:
         img = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
@@ -237,7 +434,11 @@ def main():
             img = img.round().astype(np.uint8)
         h, w = img.shape[:2]
         t = time.time()
-        ra = lam_net(img, sess, ten_vao, ten_ra, batch_size=batch_size)
+        # Kep theo o_toi_da: chi co file model shape tinh thi o BUOC phai la 128,
+        # nguoi dung go --o 256 ma cu the dua vao la sess.run nem loi.
+        canh_o = min(a.o or chon_o(h, w, o_toi_da), o_toi_da)
+        ra = lam_net(img, sess, ten_vao, ten_ra, batch_size=batch_size,
+                     canh_o=canh_o)
         # Thu nho SAU khi phong 4x moi la cach lam net that su: model dung lai
         # chi tiet o co lon roi ep xuong, chi tiet do don lai thanh net. Thu nho
         # thang tu anh goc thi khong them duoc gi.
@@ -263,7 +464,7 @@ def main():
             cv2.imwrite(str(dest), ra)
         mb = dest.stat().st_size / 1e6
         print(f"  {p.name:38s} {w}x{h} -> {ra.shape[1]}x{ra.shape[0]}"
-              f"  {mb:.1f}MB  {time.time() - t:.0f}s  -> {dest}")
+              f"  o={canh_o}  {mb:.1f}MB  {time.time() - t:.0f}s  -> {dest}")
         if mb > 2:
             print(f"     ! qua 2MB, YouTube khong nhan. Chay lai them:"
                   f"  --rong 1280 --jpg")

@@ -49,10 +49,46 @@ tự động nhận diện GPU (CUDA, DirectML trên Windows, CoreML trên macOS
 100% dòng card mới nhất **NVIDIA RTX 50-series (Blackwell)** cùng cơ chế fallback
 tự động nếu thiếu driver.
 
-👉 **Hướng dẫn đóng gói bản `.exe` cho Windows**: Xem chi tiết tại [HUONG_DAN_BUILD_EXE.md](file:///Users/sangnguyen/Downloads/thumbnail/HUONG_DAN_BUILD_EXE.md).
+👉 **Hướng dẫn đóng gói bản `.exe` cho Windows**: Xem chi tiết tại [HUONG_DAN_BUILD_EXE.md](HUONG_DAN_BUILD_EXE.md).
 
 **Đường dẫn.** Mọi đường dẫn trong code đều dùng `pathlib`, không có dấu `/` hay
 `\` viết cứng, nên không cần sửa gì khi đổi hệ.
+
+## Tốc độ trên máy khỏe
+
+Tool tự đo và tự chọn, không cần cấu hình gì. Muốn can thiệp tay thì có ba cờ:
+
+```
+python make.py <tên> --luong 32      # số khung quét mặt cùng lúc
+python net.py --o 384                # ép cỡ ô đưa vào Real-ESRGAN
+python net.py --batch 4              # ép số ô chạy cùng lúc
+```
+
+**Quét mặt (`make.py`) — song song theo khung hình.** Các model của InsightFace
+đều tí hon, nên tăng số luồng *bên trong* một model lại làm chậm đi (đo được:
+1 luồng 1095ms/khung, 16 luồng 1224ms). Trục đúng là chạy nhiều khung cùng lúc —
+ONNX Runtime nhả GIL khi chạy nên ăn thật: 8 luồng 1.60x, 16 luồng 2.24x,
+32 luồng 2.58x. Mặc định lấy `số nhân × 2` (tối đa 32) khi chạy CPU, và chỉ vài
+luồng khi có GPU vì lúc đó GPU mới là chỗ nghẽn.
+
+**Quét mặt — bỏ sớm những mặt sẽ bị loại.** Trước đây mọi mặt vừa phát hiện đều
+bị chạy đủ 4 model phụ (70.1ms/mặt, riêng nhận dạng đã 46.1ms) rồi phần lớn mới
+bị lọc bỏ. Giờ chia hai cổng: mặt quá nhỏ/quá mờ bị chặn ngay sau bước phát hiện
+(tiết kiệm trọn 70.1ms), mặt quay nghiêng quá bị chặn sau khi có góc đầu (tiết
+kiệm 79%). Phim đầy cảnh toàn cảnh và cảnh qua vai nên phần bỏ được không ít.
+Kết quả đã đối chiếu là **trùng khớp từng con số** với đường cũ.
+
+**Làm nét (`net.py`) — ô to hơn.** File model gốc khai báo shape cố định cứng
+`[1,3,128,128]`, nên đường chạy batch có sẵn trong code **chưa bao giờ hoạt
+động**. Graph này thuần convolution nên nới shape thành động là đúng về toán học
+(đã kiểm: đầu ra giống hệt đến từng bit). Mở ra được ô to hơn, mà ô to thì bớt
+phần chồng lấn bị tính lại — với ô 128 thì mỗi điểm ảnh bị tính 1.78 lần, ô 384
+chỉ còn 1.19 lần. Thời gian trên mỗi pixel hữu ích: 111.8µs (ô 128) → 69.3µs
+(ô 384). Cỡ ô tốt nhất **phụ thuộc kích thước ảnh** (ô to phải đệm nhiều hơn),
+nên tool tự tính số pixel phải chạy cho từng ảnh rồi lấy cỡ rẻ nhất.
+
+Bản model đã nới shape (`models/realesrgan_x4_dong.onnx`) được sinh tự động lần
+chạy đầu, và bản `.exe` thì có sẵn từ lúc build.
 
 ## Chạy
 

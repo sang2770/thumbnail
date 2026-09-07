@@ -18,6 +18,7 @@ Ket qua:
 """
 
 import argparse
+import os
 import pickle
 import queue
 import re
@@ -26,6 +27,7 @@ import subprocess
 import sys
 import threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -185,7 +187,11 @@ def get_face_providers():
         providers.append(("CUDAExecutionProvider", {
             "device_id": 0,
             "arena_extend_strategy": "kNextPowerOfTwo",
-            "cudnn_conv_algo_search": "HEURISTIC",
+            # Mot phim la hang nghin khung, ma moi model chay o DUNG MOT co
+            # (detector 640x640, nhan dang 112x112...). Bo tien do kernel mot lan
+            # roi an lai suot chang duong con lai. HEURISTIC chi hon khi shape
+            # doi lien tuc - khong phai truong hop nay.
+            "cudnn_conv_algo_search": "EXHAUSTIVE",
             "do_copy_in_default_stream": True,
         }))
     if "DmlExecutionProvider" in avail:
@@ -198,7 +204,45 @@ def get_face_providers():
     return providers
 
 
-def build_app():
+def co_gpu():
+    """Co bo tang toc GPU nao khong. Xem duoc ma khong phai mo session."""
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return False
+    return any(p in ort.get_available_providers() for p in
+               ("CUDAExecutionProvider", "DmlExecutionProvider",
+                "CoreMLExecutionProvider"))
+
+
+def so_luong(gpu=None):
+    """So khung hinh quet CUNG LUC.
+
+    Cac model cua InsightFace deu ti hon (112x112 den 192x192). Do thuc te thi
+    tang so luong BEN TRONG mot model lai lam CHAM di - chi phi dong bo lon hon
+    phan tinh toan:
+        intra_op=1  ->  1095 ms/khung
+        intra_op=16 ->  1224 ms/khung
+    Nhung song song theo KHUNG HINH thi an that, vi ONNX Runtime nha GIL khi
+    chay va cv2.imread cung vay:
+        1 luong  1095 ms/khung
+        8 luong   686 ms/khung   (1.60x)
+        16 luong  489 ms/khung   (2.24x)
+        32 luong  424 ms/khung   (2.58x)
+    Duoi tuyen tinh vi con nghen bang thong bo nho, nhung 2.5x la mien phi.
+
+    Tren GPU thi chinh GPU la cho nghen, chi can vai luong de no khong phai ngoi
+    cho giai ma JPEG la du.
+    """
+    lam = os.cpu_count() or 4
+    if gpu is None:
+        gpu = co_gpu()
+    if gpu:
+        return min(6, max(2, lam // 2))
+    return min(32, max(4, lam * 2))
+
+
+def build_app(intra_op=None):
     from insightface.app import FaceAnalysis
     prov_list = get_face_providers()
 
@@ -217,6 +261,16 @@ def build_app():
             model_root = str(r)
             break
 
+    # Khi quet nhieu khung song song thi moi khung da chiem mot nhan; de model tu
+    # bung luong ben trong nua la cac luong danh nhau, cham hon han.
+    kw = {}
+    if intra_op:
+        import onnxruntime as ort
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = intra_op
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        kw["sess_options"] = so
+
     # Thu lan luot tung provider: neu CUDA loi tren dong card 5x thi tu dong nhay sang DirectML / CPU
     for i in range(len(prov_list)):
         candidate_providers = prov_list[i:]
@@ -225,7 +279,13 @@ def build_app():
         ctx_id = 0 if any(g in prov_name for g in ("CUDA", "Dml")) else -1
 
         try:
-            app = FaceAnalysis(name="buffalo_l", root=model_root, providers=candidate_providers)
+            try:
+                app = FaceAnalysis(name="buffalo_l", root=model_root,
+                                   providers=candidate_providers, **kw)
+            except TypeError:
+                # Ban insightface khac khong nhan sess_options -> thoi, chay mac dinh
+                app = FaceAnalysis(name="buffalo_l", root=model_root,
+                                   providers=candidate_providers)
             app.prepare(ctx_id=ctx_id, det_size=(640, 640))
             # Test thu tren dummy image de bat loi CUDA sm_120/kernel tren RTX 50x ngay lap tuc
             dummy = np.zeros((640, 640, 3), dtype=np.uint8)
@@ -264,77 +324,207 @@ def prefetch_frames(frame_paths, max_prefetch=32):
         yield item
 
 
-def scan(frames, fps, cache_file, rescan=False):
-    """Quet mat tren tung keyframe. Ket qua duoc cache vi buoc nay cham."""
-    if cache_file.is_file() and not rescan:
-        with open(cache_file, "rb") as fh:
-            return pickle.load(fh)
+def chuan_bi_hai_pha(app):
+    """Do nghe de quet HAI PHA. Tra ve None neu ban insightface khac cau truc.
 
-    app = build_app()
-    records, seen = [], 0
+    FaceAnalysis.get() chay CA BON model phu cho MOI mat vua phat hien, roi ta
+    moi loc va nem di phan lon. Ma bon model do khong he re - do tren may nay:
+
+        detect         47.7 ms/khung  (mot lan, khong tranh duoc)
+        landmark_3d_68 14.8 ms/mat    <- chi de lay goc quay dau
+        landmark_2d_106 7.7 ms/mat
+        genderage       1.5 ms/mat
+        recognition    46.1 ms/mat    <- nang nhat, 66% chi phi moi mat
+        --------------------------------
+        moi mat        70.1 ms
+
+    Trong khi mot mat bi LOAI o buoc loc chi can bbox + det_score + do net, deu
+    co san ngay sau detect. Nen tach ra hai cong:
+
+      Cong 1 (sau detect): mat qua nho / qua mo / do tin cay thap -> bo luon,
+              tiet kiem TRON 70.1 ms.
+      Cong 2 (sau pose):   mat quay nghieng qua -> bo, tiet kiem 55.3 ms (79%).
+
+    Phim thi day canh toan canh va canh qua vai, nen phan bi loai khong he it.
+    Da doi chieu voi app.get(): ket qua giong het tung con so.
+    """
+    try:
+        from insightface.app.common import Face
+    except ImportError:
+        return None
+    if not hasattr(app, "det_model") or not isinstance(getattr(app, "models", None), dict):
+        return None
+    phu = {t: m for t, m in app.models.items() if t != "detection"}
+    if not phu:
+        return None
+    return {
+        "Face": Face,
+        "pose": phu.get("landmark_3d_68"),
+        "con_lai": [m for t, m in phu.items() if t != "landmark_3d_68"],
+    }
+
+
+def _dac_trung(f, w, det, sh, W, H):
+    """Doc cac so do can thiet tu mot khuon mat da chay du model."""
+    x1, y1, x2, y2 = f.bbox
+    pitch, yaw, roll = (f.pose if f.pose is not None else (0.0, 0.0, 0.0))
+    pitch, yaw, roll = abs(float(pitch)), abs(float(yaw)), abs(float(roll))
+    m = EDGE_MARGIN
+    inside = (x1 > m * W and y1 > m * H
+              and x2 < (1 - m) * W and y2 < (1 - m) * H)
+    return {
+        "bbox": [float(v) for v in f.bbox],
+        "w": float(w),
+        "det": float(det),
+        "sharp": sh,
+        "yaw": yaw,
+        "pitch": pitch,
+        "lip_gap": lip_gap(f),
+        "mouth": mouth_open(f),
+        "emb": np.asarray(f.normed_embedding, dtype=np.float32),
+        "sex": getattr(f, "sex", None),
+        "age": int(f.age) if getattr(f, "age", None) is not None else None,
+    }, roll, inside
+
+
+def _xep_gio(d, roll, inside, strict, extra, tally):
+    """Phan mot mat vao gio chuan / noi long / loai. Y het logic goc."""
+    w, det, sh = d["w"], d["det"], d["sharp"]
+    yaw, pitch, gap = d["yaw"], d["pitch"], d["lip_gap"]
+    # Chuan chat: mat ro, hai tai con thay (yaw nho), mat nhin thang
+    # (pitch nho), mieng khong ho rang.
+    if (w >= MIN_FACE_W and det >= MIN_DET and sh >= MIN_SHARP
+            and yaw <= MAX_YAW and roll <= MAX_ROLL
+            and pitch <= MAX_PITCH and gap >= MIN_LIP_GAP and inside):
+        strict.append(d)
+        tally["chuan"] += 1
+        return
+    if (w >= LOOSE_FACE_W and det >= LOOSE_DET
+            and sh >= LOOSE_SHARP and yaw <= LOOSE_YAW):
+        extra.append(d)
+        tally["noi_long"] += 1
+        if gap < MIN_LIP_GAP:            # dem ly do bi day xuong noi long
+            tally["ho_rang"] += 1
+        elif pitch > MAX_PITCH or yaw > MAX_YAW:
+            tally["nghieng"] += 1
+        return
+    tally["loai"] += 1
+    if sh < LOOSE_SHARP:
+        tally["mo"] += 1
+
+
+def _quet_khung(app, hp, p, img, fps):
+    """Quet mot khung -> (record hoac None, tally rieng, so mat da thay).
+
+    Chay duoc tu nhieu luong: session cua ONNX Runtime an toan da luong, va moi
+    doi tuong Face o day la cua rieng lan goi nay.
+    """
     tally = {"chuan": 0, "noi_long": 0, "loai": 0, "mo": 0,
              "nghieng": 0, "ho_rang": 0}
+    H, W = img.shape[:2]
+    strict, extra = [], []
+    seen = 0
 
-    for i, (p, img) in enumerate(prefetch_frames(frames)):
-        if i % 200 == 0:
-            print(f"    ...{i}/{len(frames)}", flush=True)
-        if img is None:
-            continue
-        H, W = img.shape[:2]
-        strict, extra = [], []
+    # Nguong cho hai cong bo som: lay muc DE NHAT trong hai gio, de cong chi bo
+    # nhung mat ma CA HAI gio deu khong nhan.
+    #
+    # Khong duoc viet thang LOOSE_* vao day. Hien tai gio chuan chat hon gio noi
+    # long o moi tieu chi, nen dung LOOSE_* thi tinh co ra dung. Nhung day la su
+    # trung hop cua bo so hien tai, khong phai tinh chat cua thuat toan - ma
+    # README thi huong nguoi dung tu tinh chinh nguong. Ha MIN_SHARP xuong duoi
+    # LOOSE_SHARP mot cai la cong bo oan nhung mat ma gio chuan van nhan, va
+    # khong co dau hieu gi bao loi. Da bi dinh dung loi nay khi doi chieu.
+    g_face_w = min(MIN_FACE_W, LOOSE_FACE_W)
+    g_det = min(MIN_DET, LOOSE_DET)
+    g_sharp = min(MIN_SHARP, LOOSE_SHARP)
+    g_yaw = max(MAX_YAW, LOOSE_YAW)
+
+    if hp is None:                       # duong cu: chay het model roi moi loc
         for f in app.get(img):
             seen += 1
-            x1, y1, x2, y2 = f.bbox
-            w = (x2 - x1) / W
-            pitch, yaw, roll = (f.pose if f.pose is not None else (0.0, 0.0, 0.0))
-            pitch, yaw, roll = abs(float(pitch)), abs(float(yaw)), abs(float(roll))
-            gap = lip_gap(f)
-            m = EDGE_MARGIN
-            inside = (x1 > m * W and y1 > m * H
-                      and x2 < (1 - m) * W and y2 < (1 - m) * H)
-
             sh = face_sharpness(img, f.bbox)
+            x1, _, x2, _ = f.bbox
+            d, roll, inside = _dac_trung(f, (x2 - x1) / W, f.det_score, sh, W, H)
+            _xep_gio(d, roll, inside, strict, extra, tally)
+    else:
+        bboxes, kpss = app.det_model.detect(img, max_num=0, metric="default")
+        for i in range(bboxes.shape[0]):
+            seen += 1
+            bbox = bboxes[i, 0:4]
+            det = float(bboxes[i, 4])
+            x1, _, x2, _ = bbox
+            w = (x2 - x1) / W
+            sh = face_sharpness(img, bbox)
 
-            # Chuan chat: mat ro, hai tai con thay (yaw nho), mat nhin thang
-            # (pitch nho), mieng khong ho rang.
-            if (w >= MIN_FACE_W and f.det_score >= MIN_DET and sh >= MIN_SHARP
-                    and yaw <= MAX_YAW and roll <= MAX_ROLL
-                    and pitch <= MAX_PITCH and gap >= MIN_LIP_GAP and inside):
-                bucket, key = strict, "chuan"
-            elif (w >= LOOSE_FACE_W and f.det_score >= LOOSE_DET
-                  and sh >= LOOSE_SHARP and yaw <= LOOSE_YAW):
-                bucket, key = extra, "noi_long"
-            else:
+            # Cong 1: chua chay model phu nao ca.
+            if w < g_face_w or det < g_det or sh < g_sharp:
                 tally["loai"] += 1
                 if sh < LOOSE_SHARP:
                     tally["mo"] += 1
                 continue
 
-            if bucket is extra:          # dem ly do bi day xuong noi long
-                if gap < MIN_LIP_GAP:
-                    tally["ho_rang"] += 1
-                elif pitch > MAX_PITCH or yaw > MAX_YAW:
-                    tally["nghieng"] += 1
+            f = hp["Face"](bbox=bbox, kps=kpss[i] if kpss is not None else None,
+                           det_score=det)
+            if hp["pose"] is not None:
+                hp["pose"].get(img, f)
+                # Cong 2: quay nghieng qua thi ca hai gio deu khong nhan.
+                yaw = abs(float(f.pose[1])) if f.pose is not None else 0.0
+                if yaw > g_yaw:
+                    tally["loai"] += 1
+                    continue
+            for m in hp["con_lai"]:
+                m.get(img, f)
+            d, roll, inside = _dac_trung(f, w, det, sh, W, H)
+            _xep_gio(d, roll, inside, strict, extra, tally)
 
-            bucket.append({
-                "bbox": [float(v) for v in f.bbox],
-                "w": float(w),
-                "det": float(f.det_score),
-                "sharp": sh,
-                "yaw": yaw,
-                "pitch": pitch,
-                "lip_gap": gap,
-                "mouth": mouth_open(f),
-                "emb": np.asarray(f.normed_embedding, dtype=np.float32),
-                "sex": getattr(f, "sex", None),
-                "age": int(f.age) if getattr(f, "age", None) is not None else None,
-            })
-            tally[key] += 1
+    rec = None
+    if strict:
+        rec = {"path": p, "sec": int(p.stem) / fps,
+               "faces": strict, "extra": extra, "hash": dhash(img)}
+    return rec, tally, seen
 
-        if strict:
-            records.append({"path": p, "sec": int(p.stem) / fps,
-                            "faces": strict, "extra": extra,
-                            "hash": dhash(img)})
+
+def scan(frames, fps, cache_file, rescan=False, luong=None):
+    """Quet mat tren tung keyframe. Ket qua duoc cache vi buoc nay cham."""
+    if cache_file.is_file() and not rescan:
+        with open(cache_file, "rb") as fh:
+            return pickle.load(fh)
+
+    gpu = co_gpu()
+    nl = luong or so_luong(gpu)
+    # Nhieu khung chay song song -> moi model chi nen dung mot nhan (xem so_luong)
+    app = build_app(intra_op=1 if nl > 1 else None)
+    hp = chuan_bi_hai_pha(app)
+    if hp is None:
+        print("  ! ban insightface nay khac cau truc -> quet mot pha nhu cu")
+    print(f"  quet {nl} khung song song"
+          f"{' (GPU la cho nghen nen khong can nhieu hon)' if gpu else ''}")
+
+    records, seen = [], 0
+    tally = {"chuan": 0, "noi_long": 0, "loai": 0, "mo": 0,
+             "nghieng": 0, "ho_rang": 0}
+
+    def lam(p):
+        img = cv2.imread(str(p))
+        if img is None:
+            return None
+        return _quet_khung(app, hp, p, img, fps)
+
+    # ex.map tra ve ket qua THEO DUNG THU TU dau vao, nen 'records' xep y het ban
+    # chay mot luong - cac buoc sau (chong trung canh, chon theo moc thoi gian)
+    # deu dua vao thu tu nay.
+    with ThreadPoolExecutor(max_workers=nl) as ex:
+        for i, kq in enumerate(ex.map(lam, frames)):
+            if i % 200 == 0:
+                print(f"    ...{i}/{len(frames)}", flush=True)
+            if kq is None:
+                continue
+            rec, t_khung, n = kq
+            seen += n
+            for k, v in t_khung.items():
+                tally[k] += v
+            if rec is not None:
+                records.append(rec)
 
     data = (records, seen, tally)
     with open(cache_file, "wb") as fh:
@@ -960,7 +1150,8 @@ def hms(sec):
 
 
 def process(video, cast_size, rebuild, rescan, out_dir=None,
-            moments=None, cast_ids=None, sim=None, phu=None, them=None):
+            moments=None, cast_ids=None, sim=None, phu=None, them=None,
+            luong=None):
     print("=" * 58)
     print(f"{video.name}")
 
@@ -986,7 +1177,7 @@ def process(video, cast_size, rebuild, rescan, out_dir=None,
     cache_file = CACHE_DIR / f"{video.stem}_faces.pkl"
     if not cache_file.is_file() or rescan:
         print("  quet mat bang InsightFace (lan dau se lau vai phut)...")
-    records, seen, tally = scan(frames, fps, cache_file, rescan)
+    records, seen, tally = scan(frames, fps, cache_file, rescan, luong=luong)
     # Ghi dau van tay SAU khi quet xong. Ghi truoc ma dut giua chung thi lan sau
     # dau van tay khop voi mot cache do dang, va cai do dang do duoc dung that.
     moc.write_text(vt)
@@ -1196,6 +1387,8 @@ def main():
     ap.add_argument("--cast", type=int, default=CAST_SIZE, help="so nhan vat chinh")
     ap.add_argument("--rebuild", action="store_true", help="trich lai keyframe")
     ap.add_argument("--rescan", action="store_true", help="quet lai mat")
+    ap.add_argument("--luong", type=int,
+                    help="so khung quet cung luc (bo trong = tu chon theo may)")
     a = ap.parse_args()
 
     if shutil.which("ffmpeg") is None:
@@ -1208,7 +1401,7 @@ def main():
 
     CACHE_DIR.mkdir(exist_ok=True)
     for v in videos:
-        process(v, a.cast, a.rebuild, a.rescan)
+        process(v, a.cast, a.rebuild, a.rescan, luong=a.luong)
     print("=" * 58)
 
 

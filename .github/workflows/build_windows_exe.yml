@@ -10,6 +10,12 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
+    # Buoc "Release Executable on Tag" duoi day tao release bang GITHUB_TOKEN.
+    # Repo tao tu 2023 tro di mac dinh cho token quyen CHI DOC, nen khong co
+    # dong nay thi day tag len se 403 ngay o buoc cuoi.
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,7 +33,10 @@ jobs:
           pip install -r requirements.txt
           # Go onnxruntime CPU mac dinh de uu tien onnxruntime-directml (tuong thich 100% GPU RTX 50x / 40x / 30x / AMD / Intel tren Windows)
           pip uninstall -y onnxruntime
-          pip install onnxruntime-directml pyinstaller
+          # Ghim PyInstaller theo phien ban LON. Ban 6 dat data vao thu muc con
+          # _internal/, ban 5 dat canh exe - doi ban lon la doi bo cuc thu muc
+          # phat hanh, hong ngay ma khong bao gi.
+          pip install onnxruntime-directml "pyinstaller>=6.6,<7"
 
       - name: Setup FFmpeg & FFprobe
         uses: FedericoCarboni/setup-ffmpeg@v3
@@ -43,6 +52,14 @@ jobs:
           Copy-Item $ffprobePath -Destination .\ffprobe.exe
           Write-Host "[+] Da copy ffmpeg.exe va ffprobe.exe vao project root."
 
+      - name: Cache InsightFace buffalo_l
+        uses: actions/cache@v4
+        with:
+          path: models/buffalo_l
+          # Bo model nay la mot ban phat hanh CO DINH (insightface v0.7), khong
+          # bao gio doi noi dung -> khoa tinh la du. Tiet kiem 288MB tai moi lan build.
+          key: insightface-buffalo_l-v0.7
+
       - name: Auto Download AI Model Dependencies (buffalo_l & Real-ESRGAN)
         shell: pwsh
         run: |
@@ -52,7 +69,11 @@ jobs:
 
           # 1. Tu dong tai bo model InsightFace buffalo_l (Face Analysis)
           $buffaloDir = "models\buffalo_l"
-          $requiredBuffaloFiles = @("1k3d68.onnx", "2d106det.onnx", "genderage.onnx", "glintr100.onnx", "scrfd_10g_bnkps.onnx")
+          # DAY LA DUNG 5 FILE THAT NAM TRONG buffalo_l.zip (da kiem chung).
+          # Truoc day cho nay ghi "glintr100.onnx" va "scrfd_10g_bnkps.onnx" -
+          # hai file cua bo antelopev2, KHONG he co trong buffalo_l. Nen phep
+          # kiem tra khong bao gio dat, va build nao cung tai lai 288MB.
+          $requiredBuffaloFiles = @("1k3d68.onnx", "2d106det.onnx", "det_10g.onnx", "genderage.onnx", "w600k_r50.onnx")
           $needsBuffaloDownload = $false
 
           if (-not (Test-Path $buffaloDir)) {
@@ -97,6 +118,30 @@ jobs:
               Write-Host "[+] Model realesrgan_x4.onnx da san sang."
           }
 
+          # 3. Doi chieu lai: thieu mot file model la ban .exe se chet ngay khi
+          # nguoi dung bam "trich xuat anh". Chan ngay tai day con hon de ho phat hien.
+          $thieu = @()
+          foreach ($f in $requiredBuffaloFiles) {
+              if (-not (Test-Path (Join-Path $buffaloDir $f))) { $thieu += $f }
+          }
+          if (-not (Test-Path "models\realesrgan_x4.onnx")) { $thieu += "realesrgan_x4.onnx" }
+          if ($thieu.Count -gt 0) {
+              Write-Error "[X] Thieu model: $($thieu -join ', ')"
+              exit 1
+          }
+          Write-Host "[+] Du 6/6 file model."
+
+      - name: Pre-build dynamic-shape Real-ESRGAN model
+        shell: pwsh
+        run: |
+          # net.py chay nhanh hon nhieu voi ban model da noi shape thanh dong (o
+          # to hon -> bot phan chong lan bi tinh lai; batch that su chay duoc).
+          # Sinh san o day de ban .exe khong phai keo theo thu vien onnx, va de
+          # nguoi dung khong phai cho lan chay dau tien.
+          python -c "import sys; sys.path.insert(0,'.'); import net; ok=net._noi_shape_dong(net.MODEL, net.MODEL_DONG); print('da tao', net.MODEL_DONG, ok); sys.exit(0 if ok and net.MODEL_DONG.is_file() else 1)"
+          if ($LASTEXITCODE -ne 0) { Write-Error "[X] Khong tao duoc ban model shape dong"; exit 1 }
+          Write-Host "[+] Da co ban model shape dong."
+
       - name: Build Standalone main.exe with PyInstaller
         shell: pwsh
         run: |
@@ -133,40 +178,121 @@ jobs:
           }
 
           # 6. Tao file chay nhanh CHAY_TOOL.bat
-          $batContent = "@echo off`r`ncd /d `"%~dp0`"`r`nstart `"`" main.exe"
+          # Goi main.exe TRUC TIEP, khong qua 'start'. Dung 'start' thi cua so
+          # moi mo roi .bat thoat ngay; neu exe chet lien thi cua so tat trong
+          # nhay mat va nguoi dung khong doc duoc loi gi. 'pause' giu man hinh lai.
+          $batContent = "@echo off`r`ncd /d `"%~dp0`"`r`nmain.exe`r`npause"
           [System.IO.File]::WriteAllText("dist\ThumbnailPipeline\CHAY_TOOL.bat", $batContent, [System.Text.Encoding]::UTF8)
 
           # 7. Tao file HUONG_DAN_NHANH.txt
-          $guideContent = @"
-=====================================================================
-          BO CONG CU THUMBNAIL PIPELINE CHO WINDOWS
-=====================================================================
+          # Luu y: toan bo here-string duoi day phai thut le bang voi khoi "run: |"
+          # de YAML khong ngat khoi; sau khi YAML bo thut le, "@ se nam o cot 0 dung chuan PowerShell.
+          $guideContent = @'
+          =====================================================================
+                    BO CONG CU THUMBNAIL PIPELINE CHO WINDOWS
+          =====================================================================
 
-1. CHAY TOOL:
-   - Click dup vao file "main.exe" (hoac "CHAY_TOOL.bat") de mo menu tieng Viet.
-   - Hoac mo CMD/PowerShell tai thu muc nay va go:
-       main.exe gpu                                  # Kiem tra tang toc GPU
-       main.exe tai <link_google_drive>              # Tai video & srt
-       main.exe make <ten_video> --cast 3            # Cat mat & tao prompt
-       main.exe net --rong 1280 --jpg                # Lam net anh
-       main.exe title "output/anh.png" "Tieu de"     # Ghep chu tieu de
+          1. CHAY TOOL:
+             - Click dup vao file "main.exe" (hoac "CHAY_TOOL.bat") de mo menu tieng Viet.
+             - Hoac mo CMD/PowerShell tai thu muc nay va go:
+                 main.exe gpu                                  # Kiem tra tang toc GPU
+                 main.exe tai <link_google_drive>              # Tai video & srt
+                 main.exe make <ten_video> --cast 3            # Cat mat & tao prompt
+                 main.exe net --rong 1280 --jpg                # Lam net anh
+                 main.exe title "output/anh.png" "Tieu de"     # Ghep chu tieu de
 
-2. CAC THU MUC LAM VIEC CO SAN:
-   - input/  : Bo video (.mp4/.mkv), phu de (.srt), file .moments.txt vao day.
-   - output/ : Chua anh goc, anh mat nhan vat va file prompt.txt thanh pham.
-   - net/    : Dat cac anh can lam net vao day.
+          2. CAC THU MUC LAM VIEC CO SAN:
+             - input/  : Bo video (.mp4/.mkv), phu de (.srt), file .moments.txt vao day.
+             - output/ : Chua anh goc, anh mat nhan vat va file prompt.txt thanh pham.
+             - net/    : Dat cac anh can lam net vao day.
 
-3. TINH NANG SAN SANG 100% (OFFLINE - KHONG CAN INTERNET):
-   - Toan bo bo model AI (InsightFace buffalo_l + Real-ESRGAN x4) da tich hop san.
-   - FFmpeg & FFprobe da kem san, khong can cai them bat cu phan mem nao.
-=====================================================================
-"@
+          3. TINH NANG SAN SANG 100% (OFFLINE - KHONG CAN INTERNET):
+             - Toan bo bo model AI (InsightFace buffalo_l + Real-ESRGAN x4) da tich hop san.
+             - FFmpeg & FFprobe da kem san, khong can cai them bat cu phan mem nao.
+          =====================================================================
+          '@
           [System.IO.File]::WriteAllText("dist\ThumbnailPipeline\HUONG_DAN_NHANH.txt", $guideContent, [System.Text.Encoding]::UTF8)
 
           # 8. Dong goi file zip
           Write-Host "[*] Dang nen thu muc thanh file ThumbnailPipeline-Windows.zip..."
           Compress-Archive -Path dist\ThumbnailPipeline\* -DestinationPath dist\ThumbnailPipeline-Windows.zip -Force
           Write-Host "[+] Dong goi ZIP thanh cong!"
+
+      - name: Smoke test the built EXE
+        shell: pwsh
+        run: |
+          # Day la buoc bao dam "chay 1 click". Build xong khong co nghia la chay
+          # duoc: thieu mot DLL cua provider, model lac cho, PyInstaller bo sot
+          # mot import - tat ca deu build THANH CONG roi chet tren may nguoi dung.
+          # Nen o day chay THAT ban .exe vua dong goi, tren du lieu tu tao.
+          $ErrorActionPreference = "Continue"
+          $dist = Join-Path (Get-Location) "dist\ThumbnailPipeline"
+          $exe = Join-Path $dist "main.exe"
+          if (-not (Test-Path $exe)) { Write-Error "[X] Khong thay main.exe"; exit 1 }
+
+          Push-Location $dist
+          $loi = @()
+
+          # --- 1. Phan cung + provider + ffmpeg ---
+          Write-Host "`n===== 1/4: main.exe gpu ====="
+          $out = (& $exe gpu 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { $loi += "lenh 'gpu' tra ve $LASTEXITCODE" }
+          # DirectML la thu bao dam ban .exe dung duoc GPU tren MOI may Windows
+          # ma khong phai cai driver CUDA. Mat no la mat toan bo tang toc.
+          if ($out -notmatch "DirectML") { $loi += "khong thay DirectML provider" }
+          if ($out -notmatch "FFmpeg: Da tim thay") { $loi += "exe khong tim thay ffmpeg" }
+
+          # --- 2. Lam net anh: chay that ONNX Runtime + Real-ESRGAN ---
+          Write-Host "`n===== 2/4: main.exe net ====="
+          New-Item -ItemType Directory -Force -Path "smoke_net" | Out-Null
+          python -c "import numpy as np, cv2; rng=np.random.default_rng(0); cv2.imwrite('smoke_net/t.png', rng.integers(0,255,(120,160,3),dtype=np.uint8))"
+          $out = (& $exe net --thumuc smoke_net --jpg 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { $loi += "lenh 'net' tra ve $LASTEXITCODE" }
+          if (-not (Test-Path "smoke_net\xong\t_net.jpg")) { $loi += "'net' khong xuat ra anh" }
+          # Ban model shape dong phai duoc dong goi kem, khong thi net.py roi ve
+          # o 128 va chay cham han ma khong ai biet.
+          if ($out -notmatch "o<=(192|256|384)") { $loi += "khong dung duoc model shape dong (o van bi ep ve 128)" }
+
+          # --- 3. Ghep tieu de: kiem Pillow + font tieng Viet ---
+          Write-Host "`n===== 3/4: main.exe title ====="
+          $out = (& $exe title "smoke_net\t.png" "Thu Tieu De Co Dau Tieng Viet" 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { $loi += "lenh 'title' tra ve $LASTEXITCODE" }
+
+          # --- 4. Trich xuat anh: nap CA 5 model InsightFace tu bundle ---
+          # Day la phep thu gia tri nhat. Video tu sinh khong co mat nguoi nen
+          # tool se bao "khong co khung nao dat" - dung nhu vay. Cai ta can biet
+          # la InsightFace NAP DUOC model tu thu muc ben canh exe. Dat sai cho
+          # thi build_app() nem loi va lenh nay thoat khac 0.
+          Write-Host "`n===== 4/4: main.exe make ====="
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=duration=2:size=320x240:rate=10 -pix_fmt yuv420p -y "input\smoke.mp4"
+          $out = (& $exe make smoke 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { $loi += "lenh 'make' tra ve $LASTEXITCODE (thuong la khong nap duoc model buffalo_l)" }
+          if ($out -match "khac cau truc") { $loi += "khong dung duoc duong quet hai pha (cham hon ~1.3x)" }
+
+          Pop-Location
+          # Don rac de khong lot vao file zip phat hanh
+          Remove-Item -Recurse -Force "$dist\smoke_net", "$dist\input\smoke.mp4", "$dist\.cache", "$dist\output\smoke" -ErrorAction SilentlyContinue
+
+          if ($loi.Count -gt 0) {
+              Write-Host "`n=============== SMOKE TEST THAT BAI ==============="
+              $loi | ForEach-Object { Write-Host "  [X] $_" }
+              Write-Error "Ban .exe build ra KHONG chay dung - xem cac loi tren."
+              exit 1
+          }
+          Write-Host "`n[+] Smoke test qua het: exe chay duoc bang 1 click."
+
+      - name: Repackage ZIP after smoke test
+        shell: pwsh
+        run: |
+          # Nen lai SAU khi da don rac cua smoke test, de file zip phat hanh sach.
+          Remove-Item -Force "dist\ThumbnailPipeline-Windows.zip" -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\ThumbnailPipeline\* -DestinationPath dist\ThumbnailPipeline-Windows.zip -Force
+          $mb = (Get-Item "dist\ThumbnailPipeline-Windows.zip").Length / 1MB
+          Write-Host ("[+] ThumbnailPipeline-Windows.zip = {0:N1} MB" -f $mb)
 
       - name: Upload Windows Executable Artifact
         uses: actions/upload-artifact@v4

@@ -91,6 +91,8 @@ def main():
     ap.add_argument("ten", nargs="*",
                     help="chi lam nhung video nay (bo trong = lam tat ca)")
     ap.add_argument("--no-copy", action="store_true", help="khong chep clipboard")
+    ap.add_argument("--luong", type=int,
+                    help="so khung quet mat cung luc (bo trong = tu chon theo may)")
     a = ap.parse_args()
 
     if shutil.which("ffmpeg") is None:
@@ -118,7 +120,7 @@ def main():
         # Buoc 2: lay khung hinh, bam theo cac moc o buoc 1.
         extract_char.process(video, a.cast, a.rebuild, a.rescan,
                              out_dir=out, moments=moments, cast_ids=cast_ids,
-                             sim=sim, phu=phu, them=them)
+                             sim=sim, phu=phu, them=them, luong=a.luong)
 
         if sub is None:
             print(f"  ! Khong thay phu de cho {video.name} -> bo qua prompt.")

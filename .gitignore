@@ -60,6 +60,9 @@ models/buffalo_l/
 *.zip
 *.tar.gz
 
+# Ban model Real-ESRGAN da noi shape thanh dong - net.py tu sinh ra tu ban goc
+models/realesrgan_x4_dong.onnx
+
 # ==========================================
 # OS & IDE Files
 # ==========================================
