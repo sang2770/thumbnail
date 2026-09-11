@@ -16,6 +16,12 @@ datas = [
     ('kenh_mau.tsv', '.'),
 ]
 
+# Dong goi objects (chua meanshape_68.pkl) vao ca 'objects/' va 'insightface/data/objects/'
+# de InsightFace get_object luon tim thay du chay frozen o che do nao
+if os.path.isfile(os.path.join('objects', 'meanshape_68.pkl')):
+    datas.append(('objects', 'objects'))
+    datas.append(('objects', 'insightface/data/objects'))
+
 binaries = []
 # Neu co san ffmpeg.exe va ffprobe.exe trong thu muc goc thi tu dong dong goi kem
 for exe in ("ffmpeg.exe", "ffprobe.exe"):
@@ -26,6 +32,12 @@ insight_datas, insight_binaries, insight_hidden = collect_all('insightface')
 onnx_datas, onnx_binaries, onnx_hidden = collect_all('onnxruntime')
 
 datas += insight_datas + onnx_datas
+
+# Dam bao copy meanshape_68 tu insight_datas vao objects neu co
+for src, dst in insight_datas:
+    if 'meanshape_68' in src:
+        datas.append((src, 'objects'))
+
 binaries += insight_binaries + onnx_binaries
 
 hiddenimports = [

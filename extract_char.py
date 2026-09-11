@@ -226,7 +226,7 @@ def provider_thuc_su(app):
         return "khong ro"
 
 
-def so_luong(gpu):
+def so_luong(gpu, that_su=""):
     """So khung hinh quet CUNG LUC.
 
     Cac model cua InsightFace deu ti hon (112x112 den 192x192). Do thuc te thi
@@ -234,24 +234,96 @@ def so_luong(gpu):
     phan tinh toan:
         intra_op=1  ->  1095 ms/khung
         intra_op=16 ->  1224 ms/khung
-    Nhung song song theo KHUNG HINH thi an that, vi ONNX Runtime nha GIL khi
-    chay va cv2.imread cung vay:
+    Nhung song song theo KHUNG HINH thi an that tren CPU, vi ONNX Runtime nha GIL:
         1 luong  1095 ms/khung
         8 luong   686 ms/khung   (1.60x)
         16 luong  489 ms/khung   (2.24x)
         32 luong  424 ms/khung   (2.58x)
-    Duoi tuyen tinh vi con nghen bang thong bo nho, nhung 2.5x la mien phi.
 
-    Tren GPU thi chinh GPU la cho nghen, chi can vai luong de no khong phai ngoi
-    cho giai ma JPEG la du.
+    Luu y GPU:
+    - DirectML (DmlExecutionProvider) tren Windows: ONNX Runtime DirectML KHONG
+      ho tro goi session.run() dong thoi tren cung mot session qua nhieu luong.
+      Goi da luong vao DML se gay loi Access Violation (0xC0000005) lam sap exe.
+      Vi GPU da la cho nghen va DirectML tan dung 100% GPU tren 1 luong, ta chay
+      1 luong cho DirectML de tuyet doi on dinh va dat toc do toi da.
+    - CUDA (CUDAExecutionProvider): toi da 4 luong de tranh tran bo nho VRAM.
+    - CPU: chay da luong (toi da 32 luong).
     """
     lam = os.cpu_count() or 4
+    if "Dml" in that_su:
+        return 1
     if gpu:
-        return min(6, max(2, lam // 2))
+        return min(4, max(1, lam // 4))
     return min(32, max(4, lam * 2))
 
 
+def _fix_insightface_objects():
+    """InsightFace's pickle_object.get_object() mac dinh chi tim tai sys._MEIPASS/objects,
+    nhung PyInstaller thuong dat tai _internal/insightface/data/objects hoac goc chuong trinh.
+    Ham nay patch get_object de tim o tat ca cac vi tri co the ton tai, tranh loi
+    '[Error] File not found: ... meanshape_68.pkl' va crash NoneType."""
+    try:
+        import insightface.data.pickle_object as ipo
+        import insightface.data as idata
+    except ImportError:
+        return
+
+    orig_get_object = ipo.get_object
+
+    def patched_get_object(name):
+        obj = orig_get_object(name)
+        if obj is not None:
+            return obj
+        if not name.endswith(".pkl"):
+            name = name + ".pkl"
+
+        candidates = []
+        here = Path(__file__).resolve().parent
+        candidates.extend([
+            here / "objects" / name,
+            here / "models" / name,
+            here / "models" / "buffalo_l" / name,
+        ])
+        if getattr(sys, "frozen", False):
+            exe_dir = Path(sys.executable).resolve().parent
+            candidates.extend([
+                exe_dir / "objects" / name,
+                exe_dir / "_internal" / "objects" / name,
+                exe_dir / "_internal" / "insightface" / "data" / "objects" / name,
+                exe_dir / "models" / name,
+                exe_dir / "models" / "buffalo_l" / name,
+            ])
+            if hasattr(sys, "_MEIPASS"):
+                meipass = Path(sys._MEIPASS).resolve()
+                candidates.extend([
+                    meipass / "objects" / name,
+                    meipass / "insightface" / "data" / "objects" / name,
+                ])
+        try:
+            import insightface
+            pkg_dir = Path(insightface.__file__).resolve().parent
+            candidates.append(pkg_dir / "data" / "objects" / name)
+        except Exception:
+            pass
+
+        for p in candidates:
+            if p.is_file():
+                try:
+                    with open(p, "rb") as f:
+                        return pickle.load(f)
+                except Exception:
+                    pass
+        return None
+
+    ipo.get_object = patched_get_object
+    idata.get_object = patched_get_object
+
+
+_fix_insightface_objects()
+
+
 def build_app(intra_op=None):
+    _fix_insightface_objects()
     from insightface.app import FaceAnalysis
     prov_list = get_face_providers()
 
@@ -431,11 +503,11 @@ def _xep_gio(d, roll, inside, strict, extra, tally):
         tally["mo"] += 1
 
 
-def _quet_khung(app, hp, p, img, fps):
+def _quet_khung(app, hp, p, img, fps, gpu_lock=None):
     """Quet mot khung -> (record hoac None, tally rieng, so mat da thay).
 
-    Chay duoc tu nhieu luong: session cua ONNX Runtime an toan da luong, va moi
-    doi tuong Face o day la cua rieng lan goi nay.
+    Chay duoc tu nhieu luong: session cua ONNX Runtime an toan da luong tren CPU,
+    con tren GPU duoc bao ve boi gpu_lock neu co nhieu luong chay dong thoi.
     """
     tally = {"chuan": 0, "noi_long": 0, "loai": 0, "mo": 0,
              "nghieng": 0, "ho_rang": 0}
@@ -445,27 +517,30 @@ def _quet_khung(app, hp, p, img, fps):
 
     # Nguong cho hai cong bo som: lay muc DE NHAT trong hai gio, de cong chi bo
     # nhung mat ma CA HAI gio deu khong nhan.
-    #
-    # Khong duoc viet thang LOOSE_* vao day. Hien tai gio chuan chat hon gio noi
-    # long o moi tieu chi, nen dung LOOSE_* thi tinh co ra dung. Nhung day la su
-    # trung hop cua bo so hien tai, khong phai tinh chat cua thuat toan - ma
-    # README thi huong nguoi dung tu tinh chinh nguong. Ha MIN_SHARP xuong duoi
-    # LOOSE_SHARP mot cai la cong bo oan nhung mat ma gio chuan van nhan, va
-    # khong co dau hieu gi bao loi. Da bi dinh dung loi nay khi doi chieu.
     g_face_w = min(MIN_FACE_W, LOOSE_FACE_W)
     g_det = min(MIN_DET, LOOSE_DET)
     g_sharp = min(MIN_SHARP, LOOSE_SHARP)
     g_yaw = max(MAX_YAW, LOOSE_YAW)
 
     if hp is None:                       # duong cu: chay het model roi moi loc
-        for f in app.get(img):
+        if gpu_lock:
+            with gpu_lock:
+                faces = app.get(img)
+        else:
+            faces = app.get(img)
+        for f in faces:
             seen += 1
             sh = face_sharpness(img, f.bbox)
             x1, _, x2, _ = f.bbox
             d, roll, inside = _dac_trung(f, (x2 - x1) / W, f.det_score, sh, W, H)
             _xep_gio(d, roll, inside, strict, extra, tally)
     else:
-        bboxes, kpss = app.det_model.detect(img, max_num=0, metric="default")
+        if gpu_lock:
+            with gpu_lock:
+                bboxes, kpss = app.det_model.detect(img, max_num=0, metric="default")
+        else:
+            bboxes, kpss = app.det_model.detect(img, max_num=0, metric="default")
+
         for i in range(bboxes.shape[0]):
             seen += 1
             bbox = bboxes[i, 0:4]
@@ -484,14 +559,28 @@ def _quet_khung(app, hp, p, img, fps):
             f = hp["Face"](bbox=bbox, kps=kpss[i] if kpss is not None else None,
                            det_score=det)
             if hp["pose"] is not None:
-                hp["pose"].get(img, f)
+                try:
+                    if gpu_lock:
+                        with gpu_lock:
+                            hp["pose"].get(img, f)
+                    else:
+                        hp["pose"].get(img, f)
+                except Exception:
+                    pass
                 # Cong 2: quay nghieng qua thi ca hai gio deu khong nhan.
-                yaw = abs(float(f.pose[1])) if f.pose is not None else 0.0
+                yaw = abs(float(f.pose[1])) if getattr(f, "pose", None) is not None else 0.0
                 if yaw > g_yaw:
                     tally["loai"] += 1
                     continue
             for m in hp["con_lai"]:
-                m.get(img, f)
+                try:
+                    if gpu_lock:
+                        with gpu_lock:
+                            m.get(img, f)
+                    else:
+                        m.get(img, f)
+                except Exception:
+                    pass
             d, roll, inside = _dac_trung(f, w, det, sh, W, H)
             _xep_gio(d, roll, inside, strict, extra, tally)
 
@@ -509,40 +598,46 @@ def scan(frames, fps, cache_file, rescan=False, luong=None):
             return pickle.load(fh)
 
     # intra_op phai chot LUC TAO session, tuc truoc khi biet provider thuc su.
-    # Khong sao: do duoc thi o muc 32 luong, intra_op gan nhu khong anh huong
-    # (=1 cho 424ms, =2 cho 417ms, =4 cho 432ms), con khi that su chay GPU thi
-    # GPU moi la noi lam viec. Nen cu dat 1 khi may du nhan de chay nhieu khung
-    # song song - tranh 32 luong x 16 nhan moi luong danh nhau.
     lam = os.cpu_count() or 4
     app = build_app(intra_op=1 if lam > 4 else None)
 
     that_su = provider_thuc_su(app)
     gpu = any(g in that_su for g in ("CUDA", "Dml", "CoreML"))
-    nl = luong or so_luong(gpu)
+    nl = luong or so_luong(gpu, that_su)
 
     hp = chuan_bi_hai_pha(app)
     if hp is None:
         print("  ! ban insightface nay khac cau truc -> quet mot pha nhu cu")
-    print(f"  quet {nl} khung song song tren {that_su}"
-          f"{' (GPU la cho nghen nen khong can nhieu hon)' if gpu else ''}")
+
+    if nl > 1:
+        print(f"  quet {nl} khung song song tren {that_su}"
+              f"{' (GPU la cho nghen nen khong can nhieu hon)' if gpu else ''}")
+    else:
+        print(f"  quet tuan tu tren {that_su}"
+              f"{' (DirectML toi uu chay 1 luong tren Windows de tranh xung dot GPU)' if 'Dml' in that_su else ''}")
+
+    # gpu_lock bao ve session cua ONNX Runtime khi co nhieu luong chay tren GPU (tranh crash DirectML/CUDA)
+    gpu_lock = threading.Lock() if (gpu and nl > 1) else None
 
     records, seen = [], 0
     tally = {"chuan": 0, "noi_long": 0, "loai": 0, "mo": 0,
              "nghieng": 0, "ho_rang": 0}
 
     def lam(p):
-        img = cv2.imread(str(p))
-        if img is None:
+        try:
+            img = cv2.imread(str(p))
+            if img is None:
+                return None
+            return _quet_khung(app, hp, p, img, fps, gpu_lock=gpu_lock)
+        except Exception:
             return None
-        return _quet_khung(app, hp, p, img, fps)
 
-    # ex.map tra ve ket qua THEO DUNG THU TU dau vao, nen 'records' xep y het ban
-    # chay mot luong - cac buoc sau (chong trung canh, chon theo moc thoi gian)
-    # deu dua vao thu tu nay.
-    with ThreadPoolExecutor(max_workers=nl) as ex:
-        for i, kq in enumerate(ex.map(lam, frames)):
+    # Khi nl <= 1: chay truc tiep vong lap, tranh chi phi context switch va an toan 100% tren DirectML
+    if nl <= 1:
+        for i, p in enumerate(frames):
             if i % 200 == 0:
                 print(f"    ...{i}/{len(frames)}", flush=True)
+            kq = lam(p)
             if kq is None:
                 continue
             rec, t_khung, n = kq
@@ -551,6 +646,19 @@ def scan(frames, fps, cache_file, rescan=False, luong=None):
                 tally[k] += v
             if rec is not None:
                 records.append(rec)
+    else:
+        with ThreadPoolExecutor(max_workers=nl) as ex:
+            for i, kq in enumerate(ex.map(lam, frames)):
+                if i % 200 == 0:
+                    print(f"    ...{i}/{len(frames)}", flush=True)
+                if kq is None:
+                    continue
+                rec, t_khung, n = kq
+                seen += n
+                for k, v in t_khung.items():
+                    tally[k] += v
+                if rec is not None:
+                    records.append(rec)
 
     data = (records, seen, tally)
     with open(cache_file, "wb") as fh:

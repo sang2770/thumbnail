@@ -138,13 +138,26 @@ xcopy /e /i /y "models" "dist\ThumbnailPipeline\models" >nul
 if exist "prompt_template.md" copy /y "prompt_template.md" "dist\ThumbnailPipeline\" >nul
 if exist "kenh_mau.tsv" copy /y "kenh_mau.tsv" "dist\ThumbnailPipeline\" >nul
 
+:: Copy objects (chua meanshape_68.pkl) de InsightFace khong bi loi file not found
+if not exist "dist\ThumbnailPipeline\objects" mkdir "dist\ThumbnailPipeline\objects"
+if exist "objects\meanshape_68.pkl" copy /y "objects\meanshape_68.pkl" "dist\ThumbnailPipeline\objects\" >nul
+if exist "dist\ThumbnailPipeline\_internal" (
+    if not exist "dist\ThumbnailPipeline\_internal\objects" mkdir "dist\ThumbnailPipeline\_internal\objects"
+    if exist "objects\meanshape_68.pkl" copy /y "objects\meanshape_68.pkl" "dist\ThumbnailPipeline\_internal\objects\" >nul
+    if exist "dist\ThumbnailPipeline\_internal\insightface\data" (
+        if not exist "dist\ThumbnailPipeline\_internal\insightface\data\objects" mkdir "dist\ThumbnailPipeline\_internal\insightface\data\objects"
+        if exist "objects\meanshape_68.pkl" copy /y "objects\meanshape_68.pkl" "dist\ThumbnailPipeline\_internal\insightface\data\objects\" >nul
+    )
+)
+
 :: Tao file copy ThumbnailPipeline.exe neu muon tuong thich ca 2 ten
 if exist "dist\ThumbnailPipeline\main.exe" copy /y "dist\ThumbnailPipeline\main.exe" "dist\ThumbnailPipeline\ThumbnailPipeline.exe" >nul
 
 :: Tao file CHAY_TOOL.bat de tien click dup
 echo @echo off > "dist\ThumbnailPipeline\CHAY_TOOL.bat"
 echo cd /d "%%~dp0" >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
-echo start "" main.exe >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
+echo main.exe >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
+echo pause >> "dist\ThumbnailPipeline\CHAY_TOOL.bat"
 
 echo.
 echo =====================================================================

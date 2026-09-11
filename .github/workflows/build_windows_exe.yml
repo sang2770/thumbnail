@@ -207,6 +207,21 @@ jobs:
           Copy-Item -Path "models\*" -Destination "dist\ThumbnailPipeline\models" -Recurse -Force
           Write-Host "[+] Da dong goi toan bo thu muc models vao dist."
 
+          # 2.5 Copy objects (chua meanshape_68.pkl) de InsightFace khong bi loi file not found
+          if (Test-Path "objects\meanshape_68.pkl") {
+              New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\objects" | Out-Null
+              Copy-Item "objects\meanshape_68.pkl" -Destination "dist\ThumbnailPipeline\objects\" -Force
+              if (Test-Path "dist\ThumbnailPipeline\_internal") {
+                  New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\_internal\objects" | Out-Null
+                  Copy-Item "objects\meanshape_68.pkl" -Destination "dist\ThumbnailPipeline\_internal\objects\" -Force
+                  if (Test-Path "dist\ThumbnailPipeline\_internal\insightface\data") {
+                      New-Item -ItemType Directory -Force -Path "dist\ThumbnailPipeline\_internal\insightface\data\objects" | Out-Null
+                      Copy-Item "objects\meanshape_68.pkl" -Destination "dist\ThumbnailPipeline\_internal\insightface\data\objects\" -Force
+                  }
+              }
+              Write-Host "[+] Da copy meanshape_68.pkl vao dist."
+          }
+
           # 3. Copy ffmpeg va ffprobe
           if (Test-Path "ffmpeg.exe") { Copy-Item "ffmpeg.exe" -Destination "dist\ThumbnailPipeline\" -Force }
           if (Test-Path "ffprobe.exe") { Copy-Item "ffprobe.exe" -Destination "dist\ThumbnailPipeline\" -Force }

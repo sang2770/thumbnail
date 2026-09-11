@@ -31,6 +31,13 @@ current_path = os.environ.get("PATH", "")
 if base_dir_str not in current_path:
     os.environ["PATH"] = base_dir_str + os.pathsep + current_path
 
+# Patch InsightFace pickle_object get_object som de tranh loi FileNotFoundError meanshape_68.pkl
+try:
+    from extract_char import _fix_insightface_objects
+    _fix_insightface_objects()
+except Exception:
+    pass
+
 
 def check_gpu():
     """Kiem tra va in thong tin phan cung GPU, ONNX Runtime Provider (CUDA/DirectML/CoreML)."""
