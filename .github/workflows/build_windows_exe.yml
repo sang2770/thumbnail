@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main", "master" ]
-    tags: [ "v*" ]
+    tags: [ "v*", "*.*.*", "[0-9]+.*" ]
 
 jobs:
   build-windows:
@@ -81,7 +81,7 @@ jobs:
       - name: Setup FFmpeg & FFprobe
         uses: FedericoCarboni/setup-ffmpeg@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Copy FFmpeg binaries into project root
         shell: pwsh
